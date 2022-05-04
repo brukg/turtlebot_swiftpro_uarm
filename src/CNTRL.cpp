@@ -153,7 +153,7 @@ void CNTRL::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPt
     robot_pose.setOrigin(tf2::Vector3(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z));
     is_pose_start = false;
     cout<<"robot_pose: "<<endl<<robot_pose.getOrigin().x()<<" "<<robot_pose.getOrigin().y()<<" "<<robot_pose.getOrigin().z()<<endl;
-
+    
 }
 
 /*controller callback*/

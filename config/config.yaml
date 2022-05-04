@@ -6,13 +6,14 @@ frame_id: odom
 base_frame_id: base_link
 arm_frame_id: manipulator_base_link
 
-mobile_base: false
-# joint_state_sub_topic: /turtlebot/joint_states #joints state subscriber mounted manipulator
-# joint_vel_pub_topic: /turtlebot/manipulator/commands/velocity #manipulator joint velocity publisher manipulator mounted on turtlebot
+mobile_base: true #true use arm mounted on mobile base, false only arm
+# subscribers for arm mounted on mobile base
+joint_state_sub_topic: /turtlebot/joint_states #joints state subscriber mounted manipulator
+joint_vel_pub_topic: /turtlebot/manipulator/commands/velocity #manipulator joint velocity publisher manipulator mounted on turtlebot
 
 # subscribers for arm only
-joint_state_sub_topic: /swiftpro/joint_states #joints state subscriber standalone manipulator
-joint_vel_pub_topic: /swiftpro/manipulator/commands/velocity #joint velocity publisher manipulator standalone
+# joint_state_sub_topic: /swiftpro/joint_states #joints state subscriber standalone manipulator
+# joint_vel_pub_topic: /swiftpro/manipulator/commands/velocity #joint velocity publisher manipulator standalone
 
 pose_sub_topic: /pose_slam/odom #position of mobile base from SLAM
 ee_target_pose_pub_sub_topic: /move_base_simple/goal #position of mobile base from SLAM
