@@ -1,0 +1,41 @@
+
+
+
+# frames
+frame_id: odom
+base_frame_id: base_link
+arm_frame_id: manipulator_base_link
+
+mobile_base: false
+# joint_state_sub_topic: /turtlebot/joint_states #joints state subscriber mounted manipulator
+# joint_vel_pub_topic: /turtlebot/manipulator/commands/velocity #manipulator joint velocity publisher manipulator mounted on turtlebot
+
+# subscribers for arm only
+joint_state_sub_topic: /swiftpro/joint_states #joints state subscriber standalone manipulator
+joint_vel_pub_topic: /swiftpro/manipulator/commands/velocity #joint velocity publisher manipulator standalone
+
+pose_sub_topic: /pose_slam/odom #position of mobile base from SLAM
+ee_target_pose_pub_sub_topic: /move_base_simple/goal #position of mobile base from SLAM
+ee_pose_err_pub_sub_topic: /swift_uarm/control/ee_pose_err #position of mobile base from SLAM
+
+# publishers
+manu_joint_pose_pub_topic: /turtlebot/manipulator/commands/position #joint position publisher
+
+# links constant value in meters
+link_1: 0.142     #
+link_2: 0.1588    #
+# link_3: 0.456     #
+# link_4: 0.142     #
+# link_5: 0.7188    #
+# offset from tip of link_2 to vacuum tip
+vacuum_offset_x: 0.0565
+vacuum_offset_z: 0.0722 #0.122.2 #
+# offset from base to joint 2
+base_offset_x: 0.0132
+base_offset_z: 0.108
+gain: 50
+x: 0.18
+y: 0.18
+z: 0.18          # height of object to pick 0.128
+damping: 0.003  # height of object to pick 0.128
+dist_err_threshold: 0.02
