@@ -1,6 +1,7 @@
 
 #ifndef UARM_H
 #define UARM_H
+#include "swift_uarm/ROBOT_TASK.h"
 #include <string>
 
 //ros includes
@@ -33,7 +34,6 @@ class CNTRL
         void controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg); //imu data callback
         void taskSequencer(const ros::TimerEvent& event); //task sequencer
         
-        bool getArm2BaseTransform(); //tf frame transformation
         void forwardKinematics(Eigen::Vector4d& joints, Eigen::Vector3d& ee_pose); //forward kinematics        
         void getJacobian(Eigen::Vector4d& joints, Eigen::Matrix3d &J); //Jacobian matrix
         void getDLS(Eigen::Matrix3d &J, double lambda, Eigen::Matrix3d &J_DLS); //DLS
@@ -84,13 +84,10 @@ class CNTRL
         bool _is_joint_control; //if joint control
         bool _is_joint_vel_target_control; //if joint vel target control
 
-
-        
-
-        // initialization Transform listener
-        boost::shared_ptr<tf2_ros::Buffer> mTfBuffer;
-        boost::shared_ptr<tf2_ros::TransformListener> mTfListener;
-        tf2::Transform robot_pose;//ekf robot pose
+        tf2::Transform robot_pose;//slam robot pose
+        Position arm_pose; //position task
+        JointLimits joint_limits; //joint limits
+        MobileManipulator mobile_manipulator; //mobile manipulator
 };
 
-#endif
+#endif 

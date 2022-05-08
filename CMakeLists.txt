@@ -51,7 +51,7 @@ include_directories(
   ${Eigen_INCLUDE_DIRS}
 )
 
-add_executable(robot_control src/robot_control.cpp src/CNTRL.cpp)
+add_executable(robot_control src/robot_control.cpp src/CNTRL.cpp src/ROBOT_TASK.cpp)
 add_executable(task_sequencer src/task_sequencer.cpp src/SQNCR.cpp)
 target_link_libraries(robot_control
                   ${catkin_LIBRARIES}  )

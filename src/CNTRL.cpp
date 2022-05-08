@@ -1,6 +1,5 @@
 #include "swift_uarm/CNTRL.h"
 #include "swift_uarm/utils.h"
-#include "swift_uarm/TASK.h"
 #include <iostream>
 #include <chrono>
 #include <math.h> 
@@ -22,19 +21,19 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     /* Loading parameters  */
 
     // pose topic
-    private_nh.param<std::string>("joint_vel_pub_topic", _joint_vel_pub_topic, "NONE");
-    private_nh.param<std::string>("ee_pose_err_pub_sub_topic", _ee_pose_err_topic, "NONE");
-    private_nh.param<std::string>("odom_pub_topic", _odom_pub_topic, "NONE");
+    private_nh.param<string>("joint_vel_pub_topic", _joint_vel_pub_topic, "NONE");
+    private_nh.param<string>("ee_pose_err_pub_sub_topic", _ee_pose_err_topic, "NONE");
+    private_nh.param<string>("odom_pub_topic", _odom_pub_topic, "NONE");
     
     // subscribers params
-    private_nh.param<std::string>("pose_sub_topic", _pose_sub_topic, "NONE");
-    private_nh.param<std::string>("joint_state_sub_topic", _joint_state_sub_topic, "NONE");
-    private_nh.param<std::string>("ee_target_pose_pub_sub_topic", _ee_target_pose_sub_topic, "NONE");
+    private_nh.param<string>("pose_sub_topic", _pose_sub_topic, "NONE");
+    private_nh.param<string>("joint_state_sub_topic", _joint_state_sub_topic, "NONE");
+    private_nh.param<string>("ee_target_pose_pub_sub_topic", _ee_target_pose_sub_topic, "NONE");
     
     // frames
-    private_nh.param<std::string>("frame_id", _frame_id, "NONE");
-    private_nh.param<std::string>("arm_frame_id", _arm_frame_id, "NONE");
-    private_nh.param<std::string>("base_frame_id", _base_frame_id, "NONE");
+    private_nh.param<string>("frame_id", _frame_id, "NONE");
+    private_nh.param<string>("arm_frame_id", _arm_frame_id, "NONE");
+    private_nh.param<string>("base_frame_id", _base_frame_id, "NONE");
 
     // constants
     private_nh.param<float>("link_1", _link_1, 0.0);
@@ -67,9 +66,6 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     // _prev_trans = Eigen::Matrix<float>::Zero();
     is_pose_start = true;
 
-    // Initialization transformation listener
-    // mTfBuffer.reset(new tf2_ros::Buffer);
-    // mTfListener.reset(new tf2_ros::TransformListener(*mTfBuffer));
     robot_pose.setIdentity();//initialize robot pose
 
 
@@ -77,47 +73,13 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     // _link_1 = 0.456;   _link_2 = 0.142;  _link_3 = 0.;  _link_4 = 0.142; _link_5 = 0.1588 +0.56;
     joint_values.setZero(4);
 
-    r2b <<  0, -1, 0, 0.037,
-            1, 0, 0, 0,
-            0, 0, 1, 0.147,
-            0, 0, 0, 1;
+    // r2b <<  0, -1, 0, 0.037,
+    //         1, 0, 0, 0,
+    //         0, 0, 1, 0.147,
+    //         0, 0, 0, 1;
     ee_pose.setZero(); ee_target = {_X, _Y, _Z};
-    is_joints_read = false; _is_vacuum_gripper = false; _is_joint_vel_stopped = false;
-}
+    is_joints_read = false;// _is_vacuum_gripper = false;// _is_joint_vel_stopped = false;
 
-/* @brief base_link to arm transformation */
-bool CNTRL::getArm2BaseTransform()
-{
-    ROS_INFO("Getting static TF from '%s' to '%s'", _arm_frame_id.c_str(), _base_frame_id.c_str());
-
-    mArm2BaseTransfValid = false;
-    static bool first_error = true;
-
-    // ----> Static transforms
-    // Sensor to Base link
-    try {
-        // Save the transformation
-        ROS_INFO("Getting static TF from '%s' to '%s'", _arm_frame_id.c_str(), _base_frame_id.c_str());
-        geometry_msgs::TransformStamped a2b = mTfBuffer->lookupTransform(_base_frame_id, _arm_frame_id, ros::Time(0), ros::Duration(0.1));
-
-        // Get the TF2 transformation
-        tf2::fromMsg(a2b.transform, mArm2BaseTransf);
-
-        double roll, pitch, yaw;
-        tf2::Matrix3x3(mArm2BaseTransf.getRotation()).getRPY(roll, pitch, yaw);
-        ROS_INFO("%.3f", roll);
-    } catch (tf2::TransformException& ex) {
-        ROS_INFO("%s", ex.what());
-        if (!first_error) {
-            first_error = false;
-        }
-
-        mArm2BaseTransf.setIdentity();
-        return false;
-    }
-    // <---- Static transforms
-    mArm2BaseTransfValid = true;
-    return true;
 }
 
 /* @brief joints state listner */
@@ -139,6 +101,7 @@ void CNTRL::jointsCallback(const sensor_msgs::JointState::ConstPtr& msg)
                 }else if (msg->name[i] == "joint4"){
                     joint_values(3,0)  = msg->position[i];
                 }
+            mobile_manipulator.setJoints(joint_values);
             }
         is_joints_read = true;
     }
@@ -153,14 +116,14 @@ void CNTRL::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPt
     robot_pose.setOrigin(tf2::Vector3(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z));
     is_pose_start = false;
     cout<<"robot_pose: "<<endl<<robot_pose.getOrigin().x()<<" "<<robot_pose.getOrigin().y()<<" "<<robot_pose.getOrigin().z()<<endl;
-    
+
 }
 
 /*controller callback*/
 void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {   
+    // ROS_INFO("control Callback");
     double dist_error = 0;
-    ROS_INFO("control Callback");
     if(is_joints_read){
         std_msgs::Float64MultiArray joint_velocity, ee_pose_err_msg;
         // stop manipulator
@@ -170,36 +133,66 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         joint_velocity.data[2] = 0;
         // publish joint velocity
         joints_vel_pub.publish(joint_velocity);
-        _is_joint_vel_stopped = false;
+        // _is_joint_vel_stopped = false;
 
         ee_target[0] = msg->pose.position.x;
         ee_target[1] = msg->pose.position.y;
         ee_target[2] =  msg->pose.position.z;
+        arm_pose.setDesired(ee_target); //set desired arm pose from sequencer 
 
 
-        Eigen::MatrixXd error(3,1);
-        Eigen::Matrix3d J, J_DLS;
+        Eigen::Vector3d  err(3,1), dq(3,1);
+        Eigen::Matrix3d J, J_bar, J_DLS, P = Eigen::Matrix3d::Identity();
 
-        forwardKinematics(joint_values, ee_pose);
-        cout<<"ee_pose: "<<endl<<ee_pose<<endl;
-        // get Jacobian
-        getJacobian(joint_values, J);
-        error(0,0) = ee_target[0] - ee_pose[0];
-        error(1,0) = ee_target[1] - ee_pose[1];
-        error(2,0) = ee_target[2] - ee_pose[2];
+
+        joint_limits.update(mobile_manipulator);
+        Eigen::RowVector3d JJ, J_bar_;
+        Eigen::Vector3d J_DLS_, J_bar_inv; 
+        double err_;
+        joint_limits.getJacobian(JJ);
+        J_bar_ = JJ*P;
+        mobile_manipulator.getDLS(J_bar_, _damping, J_DLS_);
+        if (joint_limits.isActive()){
+            joint_limits.getError(err_);
+            cout<<"err_: "<<err_<<endl;
+            dq += J_DLS_ *(_K*err_ - JJ*dq);
+            J_bar_inv = J_bar_.transpose() * (J_bar_* J_bar_.transpose()).completeOrthogonalDecomposition().pseudoInverse();
+            P -= J_bar_inv * J_bar_;
+        }
+
+
+        arm_pose.update(mobile_manipulator); //update arm pose
+        arm_pose.getJacobian(J); //get Jacobian
+        J_bar = J*P;
+        mobile_manipulator.getDLS(J_bar, _damping, J_DLS);
+        arm_pose.getError(err); //get error
+
+        dq += J_DLS *(_K*err - J*dq);
+        P -= J_bar.completeOrthogonalDecomposition().pseudoInverse() * J_bar;
+        
+
+
+        // forwardKinematics(joint_values, ee_pose);
+        // cout<<"ee_pose: "<<endl<<ee_pose<<endl;
+        // // get Jacobian
+        // getJacobian(joint_values, J);
+        // error(0,0) = ee_target[0] - ee_pose[0];
+        // error(1,0) = ee_target[1] - ee_pose[1];
+        // error(2,0) = ee_target[2] - ee_pose[2];
         
         // joint velocity
-        Eigen::MatrixXd dq(3,1);
-        getDLS(J, _damping, J_DLS);
-        dq = J_DLS*(_K*error);
+        // getDLS(J, _damping, J_DLS);
+        // dq += J_DLS*(_K*error);
 
-
+        // publish joint velocity
         joint_velocity.data.resize(3);
         joint_velocity.data[0] = dq(0,0);
         joint_velocity.data[1] = dq(1,0);
         joint_velocity.data[2] = dq(2,0);
-        // publish joint velocity
         joints_vel_pub.publish(joint_velocity);
+
+        mobile_manipulator.getPose(ee_pose);
+        // publish error message to sequencer node
         dist_error = hypot(hypot(ee_target[0]-ee_pose[0], ee_target[1]-ee_pose[1]), ee_target[2]-ee_pose[2]); 
         ee_pose_err_msg.data.resize(1);
         ee_pose_err_msg.data[0] = dist_error;

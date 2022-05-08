@@ -1,6 +1,5 @@
 #include "swift_uarm/SQNCR.h"
 #include "swift_uarm/utils.h"
-#include "swift_uarm/TASK.h"
 #include <iostream>
 #include <chrono>
 #include <math.h> 
@@ -147,7 +146,7 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
     std_msgs::Float64MultiArray joint_velocity; // joint velocity
     geometry_msgs::PoseStamped pose_msg; //pose message
     // double dist_error = hypot(hypot(ee_target[0]-ee_pose[0], ee_target[1]-ee_pose[1]), ee_target[2]-ee_pose[2]); 
-    cout<<"ee_error: "<<ee_error<<endl;
+    // cout<<"ee_error: "<<ee_error<<endl;
     if (ee_error>_dist_err_threshold){
             pose_msg.header.stamp = ros::Time::now();
             pose_msg.pose.position.x = ee_target[0];
