@@ -6,7 +6,9 @@
 #include <eigen3/Eigen/Dense>
 
 using namespace std;
-
+typedef Eigen::Matrix< double, 6, 6 > Matrix6d;
+typedef Eigen::Matrix< double, 1, 6 > RowVector6d;
+typedef Eigen::Matrix< double, 6, 1 > Vector6d;
 // #include <tf2_ros/buffer.h>
 
 class MobileManipulator
@@ -14,16 +16,16 @@ class MobileManipulator
     public:
         MobileManipulator();
         ~MobileManipulator() {};
-        void getEEJacobian(Eigen::Matrix3d &J);
-        void getPose(Eigen::Vector3d& ee_pose);
-        void getDLS(Eigen::Matrix3d &J, double lambda, Eigen::Matrix3d &J_DLS); //DLS
-        void getDLS(Eigen::RowVector3d &J, double lambda, Eigen::Vector3d &J_DLS); //DLS
-        void setJoints(Eigen::Vector4d joints);
-        void getJoints(Eigen::Vector3d &q);
+        void getEEJacobian(Matrix6d &J);
+        void getPose(Vector6d& ee_pose);
+        void getDLS(Matrix6d &J, double lambda, Matrix6d &J_DLS); //DLS
+        void getDLS(RowVector6d &J, double lambda, Vector6d &J_DLS); //DLS
+        void setJoints(Vector6d joints);
+        void getJoints(Vector6d &q);
 
     private:
-        void forwardKinematics(Eigen::Vector4d& joints, Eigen::Vector3d& ee_pose); //forward kinematics        
-        void getJacobian(Eigen::Vector4d& joints, Eigen::Matrix3d &J); //Jacobian matrix
+        void forwardKinematics(Vector6d& joints, Vector6d& ee_pose); //forward kinematics        
+        void getJacobian(Vector6d& joints, Matrix6d &J); //Jacobian matrix
         
         void update();
         void getEETransform();
@@ -31,7 +33,7 @@ class MobileManipulator
         void getDOF();
 
         // variables
-        Eigen::Vector4d joint_values;
+        Vector6d joint_values;
         float _link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z;
         Eigen::Matrix4d r2b; //robot to base transformation
         bool _is_mobile_base; 
@@ -72,15 +74,17 @@ class Position : public TASK
         Position();
         ~Position() {};
         void update(MobileManipulator &robot);
-        void getJacobian(Eigen::Matrix3d &J);
-        void getError(Eigen::Vector3d &error);
+        void getJacobian(Matrix6d &J);
+        void getError(Vector6d &error);
         bool isActive();
         void setDesired(Eigen::Vector3d &sigma_d);
         void getDesired(Eigen::Vector3d &sigma_d);
 
     private:
-        Eigen::Matrix3d  J, J_DLS;
-        Eigen::Vector3d error, ee_pose, sigma_d;
+        Matrix6d  J, J_DLS;
+        Vector6d error;
+        Eigen::Vector3d sigma_d;
+        Vector6d ee_pose;
         bool active;
 
 };
@@ -94,12 +98,13 @@ class JointLimits : public TASK
         bool isActive();
         void setDesired(Eigen::Vector3d &sigma_d);
         void getDesired(Eigen::Vector3d &sigma_d);
-        void getJacobian(Eigen::RowVector3d &J);
+        void getJacobian(RowVector6d &J);
         void getError(double &error);
 
     private:
-        Eigen::RowVector3d  J, J_DLS;
-        Eigen::Vector3d sigma_d, q;
+        RowVector6d  J, J_DLS;
+        Eigen::Vector3d sigma_d;
+        Vector6d q;
         std::vector<Eigen::Vector2d> jointlimits;
         bool active;
         Eigen::Vector3d joints;

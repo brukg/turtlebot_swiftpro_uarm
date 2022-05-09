@@ -70,9 +70,9 @@ class CNTRL
 
         //link lengths
         float _link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z;
-        Eigen::Vector3d ee_pose; //end effector pose
+        Vector6d ee_pose; //end effector pose
         Eigen::Vector3d ee_target;   //end effector target
-        Eigen::Vector4d joint_values; //joint values
+        Vector6d joint_values; //joint values
         Eigen::Matrix4d r2b; //robot to base transformation
         // parameters
         float _K, _X,_Y,_Z, _damping; //gain an height

@@ -71,7 +71,7 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
 
     // link lengths in meters
     // _link_1 = 0.456;   _link_2 = 0.142;  _link_3 = 0.;  _link_4 = 0.142; _link_5 = 0.1588 +0.56;
-    joint_values.setZero(4);
+    joint_values.setZero(6);
 
     // r2b <<  0, -1, 0, 0.037,
     //         1, 0, 0, 0,
@@ -133,21 +133,20 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         joint_velocity.data[2] = 0;
         // publish joint velocity
         joints_vel_pub.publish(joint_velocity);
-        // _is_joint_vel_stopped = false;
 
         ee_target[0] = msg->pose.position.x;
         ee_target[1] = msg->pose.position.y;
         ee_target[2] =  msg->pose.position.z;
-        arm_pose.setDesired(ee_target); //set desired arm pose from sequencer 
 
 
-        Eigen::Vector3d  err(3,1), dq(3,1);
-        Eigen::Matrix3d J, J_bar, J_DLS, P = Eigen::Matrix3d::Identity();
+        Vector6d  err(6,1);
+        Vector6d dq(6,1);
+        Matrix6d J, J_bar, J_DLS, P = Matrix6d::Identity();
 
         // joint limit task
         joint_limits.update(mobile_manipulator);
-        Eigen::RowVector3d JJ, J_bar_;
-        Eigen::Vector3d J_DLS_, J_bar_inv; 
+        RowVector6d JJ, J_bar_;
+        Vector6d J_DLS_(6,1), J_bar_inv(6,1); 
         double err_;
         joint_limits.getJacobian(JJ);
         J_bar_ = JJ*P;
@@ -161,6 +160,7 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         }
 
         // arm pose task
+        arm_pose.setDesired(ee_target); //set desired arm pose from sequencer 
         arm_pose.update(mobile_manipulator); //update arm pose
         arm_pose.getJacobian(J); //get Jacobian
         J_bar = J*P;
