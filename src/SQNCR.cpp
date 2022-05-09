@@ -49,6 +49,7 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
     private_nh.param<float>("damping", _damping, 0.01);
     private_nh.param<bool>("mobile_base", _is_mobile_base, 1);
     private_nh.param<float>("dist_err_threshold", _dist_err_threshold, 1);
+    private_nh.param<float>("seq_freq", _seq_freq, 1);
 
     // subscribers
     // pose_sub = node.subscribe(_pose_sub_topic, 1, &SQNCR::poseCallback, this);
@@ -58,7 +59,7 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
     // publishers
     joints_vel_pub = node.advertise<std_msgs::Float64MultiArray>(_joint_vel_pub_topic, 1);
     goal_pub = node.advertise<geometry_msgs::PoseStamped>(_ee_target_pose_sub_topic, 1);
-    sequencer = node.createTimer(ros::Duration(0.2), &SQNCR::taskSequencer, this); // timer for task sequencer
+    sequencer = node.createTimer(ros::Duration(1/_seq_freq), &SQNCR::taskSequencer, this); // timer for task sequencer
 
     //initialising values
 
@@ -80,7 +81,7 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
             1, 0, 0, 0,
             0, 0, 1, 0.147,
             0, 0, 0, 1;
-    ee_pose.setZero(); ee_target = {_X, _Y, _Z};
+    ee_pose.setZero(); ee_target << 0, 0, _X, _Y, _Z, 0;
     is_joints_read = false; _is_vacuum_gripper = false; _is_joint_vel_stopped = false;
     ee_error = 10; 
 }
@@ -149,9 +150,17 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
     // cout<<"ee_error: "<<ee_error<<endl;
     if (ee_error>_dist_err_threshold){
             pose_msg.header.stamp = ros::Time::now();
-            pose_msg.pose.position.x = ee_target[0];
-            pose_msg.pose.position.y = ee_target[1];
-            pose_msg.pose.position.z = ee_target[2];
+            pose_msg.pose.position.x = ee_target[2];
+            pose_msg.pose.position.y = ee_target[3];
+            pose_msg.pose.position.z = ee_target[4];
+            // tf2::Matrix3x3 m; m.setRPY(0, 0, ee_target[5]);
+            tf2::Quaternion q; q.setRPY(0, 0, ee_target[5]);
+            // tf2::convert(m, q);
+            pose_msg.pose.orientation.x = q.x();
+            pose_msg.pose.orientation.y = q.y();
+            pose_msg.pose.orientation.z = q.z();
+            pose_msg.pose.orientation.w = q.w();
+
             goal_pub.publish(pose_msg);
             _is_joint_vel_stopped = false;
             // cout<<"republishing"<<endl;

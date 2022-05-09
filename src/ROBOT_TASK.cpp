@@ -16,29 +16,6 @@ MobileManipulator::MobileManipulator(){
 
 }
 
-
-TASK::TASK(){
-
-
-    // sigma_d = 0;
-
-}
-
-Position::Position(){
-    active = false;
-
-}
-JointLimits::JointLimits(){
-    this->J = Vector6d::Zero(1,6);
-    Eigen::Vector2d j0_lim, j1_lim, j2_lim;
-    j0_lim << -1.5708, 1.5708;  j1_lim<< -1.5708/4, 1.5708/2;  j2_lim<< 0, 1.75;
-
-    this->jointlimits.push_back(j0_lim); //joint 0 limits -pi/2 to pi/2
-    this->jointlimits.push_back(j1_lim); //joint 1 limits -pi/4 to pi/2
-    this->jointlimits.push_back(j2_lim); //joint 2 limits 0 to 1.75 0 to 100deg 
-    this->dxe = 0;
-}
-
 void MobileManipulator::getEEJacobian(Matrix6d &J)
 {
     getJacobian(this->joint_values, J);
@@ -49,7 +26,12 @@ void MobileManipulator::getPose(Vector6d& ee_pose)
     forwardKinematics(joint_values, ee_pose);
 }
 
-
+void MobileManipulator::getBasePose(Eigen::Isometry3d& base_pose){
+    base_pose = this->base_pose;
+}
+void MobileManipulator::setBasePose(Eigen::Isometry3d& base_pose){
+    this->base_pose = base_pose;
+}
 void MobileManipulator::setJoints(Vector6d joints)
 {
     this->joint_values = joints;
@@ -65,22 +47,22 @@ void MobileManipulator::forwardKinematics(Vector6d& joints, Vector6d& ee_pose)
 {
 	//swiftpro uarm forward kinematics
     // cout<<"joints"<<joints<<endl;
-    double horizontal = _link_1 * sin(joints[1]) 
-				        + _link_2 * cos(joints[2]) + _base_offset_x + _vacuum_offset_x;
+    double horizontal = _link_1 * sin(joints[3]) 
+				        + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x;
 
-	double verical = _link_1 * cos(joints[1]) 
-				    - _link_2 * sin(joints[2]);
+	double verical = _link_1 * cos(joints[3]) 
+				    - _link_2 * sin(joints[4]);
     Eigen::Vector2d eta;
     // eta[1] = yaw;
     Eigen::Vector4d ee_p;            
-    ee_p(0) = horizontal * cos(joints[0]); //x arm position 
-	ee_p(1) = horizontal * sin(joints[0]); //y arm position
+    ee_p(0) = horizontal * cos(joints[2]); //x arm position 
+	ee_p(1) = horizontal * sin(joints[2]); //y arm position
 	ee_p(2) = verical + _base_offset_z - _vacuum_offset_z; //z arm position
-    ee_p(3) = 1;
-    double yaw = joints[0] + joints[3];
-    Eigen::Vector4d temp = r2b * ee_p; //using arm on mobile base
-    if (_is_mobile_base) ee_pose = temp.head(3);
-    else ee_pose = ee_p.head(3); //only arm
+    ee_p(3) =  1;
+    double yaw = joints[2] + joints[5];
+    Eigen::Vector4d temp;  //using arm on mobile base
+    if (_is_mobile_base) {temp = base_pose * r2b * ee_p; ee_pose = temp.head(3);} //if using mobile base
+    else ee_pose << 0, 0, ee_p[0], ee_p[1], ee_p[2], yaw; //only arm
 	// cout<<"ee from fk"<< ee_pose;
 }
 
@@ -90,30 +72,41 @@ void MobileManipulator::forwardKinematics(Vector6d& joints, Vector6d& ee_pose)
 void MobileManipulator::getJacobian(Vector6d& joints, Matrix6d &J)
 {
     //swiftpro uarm jacobian matrix
-    double horizontal = _link_1 * sin(joints[1]) 
-				   + _link_2 * cos(joints[2]) + _base_offset_x + _vacuum_offset_x;
+    double horizontal = _link_1 * sin(joints[3]) 
+				   + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x;
 
-	double verical = _link_1 * cos(joints[1]) 
-				  - _link_2 * sin(joints[2]) + _base_offset_z;
+	double verical = _link_1 * cos(joints[3]) 
+				  - _link_2 * sin(joints[4]) + _base_offset_z;
+    double yaw = joints[2] + joints[5];
 
     // derivative of x with respect to joints
-	double dx_j0 = horizontal * -sin(joints[0]);
-    double dx_j1 = _link_1 * cos(joints[1]) * cos(joints[0]); 
-	double dx_j2 =  _link_2 * -sin(joints[2]) * cos(joints[0]);
+	double dx_j0 = horizontal * -sin(joints[2]);
+    double dx_j1 = _link_1 * cos(joints[3]) * cos(joints[2]); 
+	double dx_j2 =  _link_2 * -sin(joints[4]) * cos(joints[2]);
                     
     // derivative of y with respect to joints
-	double dy_j0 = horizontal * cos(joints[0]);
-	double dy_j1 = _link_1 * cos(joints[1] )  * sin(joints[0]); 
-	double dy_j2 = _link_2 * -sin(joints[2])  * sin(joints[0]);
+	double dy_j0 = horizontal * cos(joints[2]);
+	double dy_j1 = _link_1 * cos(joints[3] )  * sin(joints[2]); 
+	double dy_j2 = _link_2 * -sin(joints[4])  * sin(joints[2]);
 
     // derivative of z with respect to joints
 	double dz_j0 = 0;
-	double dz_j1 = _link_1 * -sin(joints[1] ); 
-	double dz_j2 = -_link_2 * cos(joints[2]);
+	double dz_j1 = _link_1 * -sin(joints[3]); 
+	double dz_j2 = -_link_2 * cos(joints[4]);
+
+
+    // derivative of yaw with respect to joints
+    double dyaw_j0 = 1;
+    double dyaw_j1 = 0;
+    double dyaw_j2 = 0;
+    double dyaw_j3 = 1;
 	
-    J << dx_j0, dx_j1, dx_j2,
-         dy_j0, dy_j1, dy_j2,
-         dz_j0, dz_j1, dz_j2;
+    J << 0, 0, 0,       0,      0,      0,
+         0, 0, 0,       0,      0,      0,
+         0, 0, dx_j0,   dx_j1, dx_j2,   0,
+         0, 0, dy_j0,   dy_j1, dy_j2,   0,
+         0, 0, 0,       dz_j1, dz_j2,   0,
+         0, 0, dyaw_j0, 0,      0,      dyaw_j3;
 }
 
 
@@ -128,6 +121,14 @@ void MobileManipulator::getDLS(RowVector6d &J, double lambda, Vector6d &J_DLS)
 }
 
 
+
+
+TASK::TASK(){
+
+
+    // sigma_d = 0;
+
+}
 bool TASK::isActive(bool& is_active){
     return true;
 }
@@ -165,24 +166,27 @@ void TASK::euler_to_quaternion(){
 
 
 
+/*
+*
+*/
+Position::Position(){
+    active = false;
+
+}
 
 //
 void Position::update(MobileManipulator &robot){
     robot.getEEJacobian(this->J);
-    robot.getPose(ee_pose);
-    getDesired(sigma_d);
-    // cout<<"ee_pose"<<ee_pose<<endl;
-    Eigen::Vector3d e;
-    e = sigma_d - ee_pose;
-    error(3)=e(0); error(4)=e(1); error(5)=e(2); 
-    // cout<<"error"<<error<<endl;
+    robot.getPose(this->ee_pose);
+    // getDesired(sigma_d);
+    this-> error = sigma_d - ee_pose;
 }
 
-void Position::setDesired(Eigen::Vector3d &sigma_d){
+void Position::setDesired(Vector6d &sigma_d){
     this-> sigma_d = sigma_d;
 }
 
-void Position::getDesired(Eigen::Vector3d &sigma_d){
+void Position::getDesired(Vector6d &sigma_d){
     sigma_d = this->sigma_d;
 }
 
@@ -200,18 +204,33 @@ void Position::getError(Vector6d &error)
 
     error = this->error;
 }
+
+
+/*
+* 
+*/
+JointLimits::JointLimits(){
+    this->J = Vector6d::Zero(1,6);
+    Eigen::Vector2d j0_lim, j1_lim, j2_lim;
+    j0_lim << -1.5708, 1.5708;  j1_lim<< -1.5708/4, 1.5708/2;  j2_lim<< 0, 1.75;
+
+    this->jointlimits.push_back(j0_lim); //joint 0 limits -pi/2 to pi/2
+    this->jointlimits.push_back(j1_lim); //joint 1 limits -pi/4 to pi/2
+    this->jointlimits.push_back(j2_lim); //joint 2 limits 0 to 1.75 0 to 100deg 
+    this->dxe = 0;
+}
 //
 void JointLimits::update(MobileManipulator &robot){
     // robot.getEEJacobian(this->J);
-    this->J[0] = 1; 
+    this->J[2] = 1; 
     robot.getJoints(q);
     // cout<<this->jointlimits<<endl;
-    cout<<"q"<<this->q<<endl;
-    cout<<"j"<<this->J<<endl;
-    if (dxe==0 && q[0]>=jointlimits[0][1]-0.05){this->dxe=-1; this->active=true;}
-    if (dxe==0 && q[0]<=jointlimits[0][0]+0.05){this->dxe=1; this->active=true;}
-    if (dxe==-1 && q[0]<=jointlimits[0][1]-0.09){this->dxe=0; this->active=false;}
-    if (dxe==1 && q[0]>=jointlimits[0][0]+0.09){this->dxe=0; this->active=false;}
+    // cout<<"q "<<this->q<<endl;
+    // cout<<"j "<<this->J<<endl;
+    if (dxe==0 && q[2]>=jointlimits[0][1]-0.05){this->dxe=-1; this->active=true;}
+    if (dxe==0 && q[2]<=jointlimits[0][0]+0.05){this->dxe=1; this->active=true;}
+    if (dxe==-1 && q[2]<=jointlimits[0][1]-0.09){this->dxe=0; this->active=false;}
+    if (dxe==1 && q[2]>=jointlimits[0][0]+0.09){this->dxe=0; this->active=false;}
 }
 void JointLimits::setDesired(Eigen::Vector3d &sigma_d)
 {

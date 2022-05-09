@@ -18,6 +18,8 @@
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h> //
 
+typedef Eigen::Matrix< double, 6, 1 > Vector6d;
+
 
 class SQNCR
 {
@@ -72,11 +74,11 @@ class SQNCR
         //link lengths
         float _link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z;
         Eigen::Vector3d ee_pose; //end effector pose
-        Eigen::Vector3d ee_target;   //end effector target
+        Vector6d ee_target;   //end effector target
         Eigen::Vector4d joint_values; //joint values
         Eigen::Matrix4d r2b; //robot to base transformation
         // parameters
-        float _K, _X,_Y,_Z, _damping; //gain an height
+        float _K, _X,_Y,_Z, _damping, _seq_freq; //gain an height
         bool _is_mobile_base; //if mobile base
         bool _is_vacuum_gripper; //if vacuum gripper
         bool _is_joint_vel_stopped; //if joint vel control is stopped

@@ -71,7 +71,7 @@ class CNTRL
         //link lengths
         float _link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z;
         Vector6d ee_pose; //end effector pose
-        Eigen::Vector3d ee_target;   //end effector target
+        Vector6d ee_target;   //end effector target
         Vector6d joint_values; //joint values
         Eigen::Matrix4d r2b; //robot to base transformation
         // parameters
@@ -85,6 +85,7 @@ class CNTRL
         bool _is_joint_vel_target_control; //if joint vel target control
 
         tf2::Transform robot_pose;//slam robot pose
+        Eigen::Isometry3d robot_pose_eigen;//slam robot pose
         Position arm_pose; //position task
         JointLimits joint_limits; //joint limits
         MobileManipulator mobile_manipulator; //mobile manipulator

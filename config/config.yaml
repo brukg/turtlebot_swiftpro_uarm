@@ -1,6 +1,6 @@
 
 
-
+seq_freq: 2
 # frames
 frame_id: odom
 base_frame_id: base_link
@@ -34,9 +34,10 @@ vacuum_offset_z: 0.0722 #0.122.2 #
 # offset from base to joint 2
 base_offset_x: 0.0132
 base_offset_z: 0.108
-gain: 50
+gain: 5
 x: 0.2
 y: 0.2
 z: 0.17          # height of object to pick 0.128
+yaw: 0 # EE yaw
 damping: 0.003  # height of object to pick 0.128
 dist_err_threshold: 0.02

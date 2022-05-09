@@ -77,7 +77,7 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     //         1, 0, 0, 0,
     //         0, 0, 1, 0.147,
     //         0, 0, 0, 1;
-    ee_pose.setZero(); ee_target = {_X, _Y, _Z};
+    ee_pose.setZero(6); ee_target <<0, 0,_X, _Y, _Z, 0;
     is_joints_read = false;// _is_vacuum_gripper = false;// _is_joint_vel_stopped = false;
 
 }
@@ -93,13 +93,13 @@ void CNTRL::jointsCallback(const sensor_msgs::JointState::ConstPtr& msg)
             for (int i = 0; i < msg->name.size(); i++)
             {   
                 if (msg->name[i] == "joint1"){
-                    joint_values(0,0) = msg->position[i];
+                    joint_values(2,0) = msg->position[i];
                 }else if (msg->name[i] == "joint2"){
-                    joint_values(1,0) = msg->position[i];
+                    joint_values(3,0) = msg->position[i];
                 }else if (msg->name[i] == "joint3"){
-                    joint_values(2,0)  = msg->position[i];
+                    joint_values(4,0)  = msg->position[i];
                 }else if (msg->name[i] == "joint4"){
-                    joint_values(3,0)  = msg->position[i];
+                    joint_values(5,0)  = msg->position[i];
                 }
             mobile_manipulator.setJoints(joint_values);
             }
@@ -115,6 +115,8 @@ void CNTRL::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPt
     robot_pose.setRotation(q);
     robot_pose.setOrigin(tf2::Vector3(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z));
     is_pose_start = false;
+    robot_pose_eigen = Eigen::Isometry3d(Eigen::Translation3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z)
+                             * Eigen::Quaterniond(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
     cout<<"robot_pose: "<<endl<<robot_pose.getOrigin().x()<<" "<<robot_pose.getOrigin().y()<<" "<<robot_pose.getOrigin().z()<<endl;
 
 }
@@ -127,16 +129,22 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     if(is_joints_read){
         std_msgs::Float64MultiArray joint_velocity, ee_pose_err_msg;
         // stop manipulator
-        joint_velocity.data.resize(3);
-        joint_velocity.data[0] = 0;
-        joint_velocity.data[1] = 0;
-        joint_velocity.data[2] = 0;
-        // publish joint velocity
-        joints_vel_pub.publish(joint_velocity);
+        // joint_velocity.data.resize(4);
+        // joint_velocity.data[0] = 0;
+        // joint_velocity.data[1] = 0;
+        // joint_velocity.data[2] = 0;
+        // joint_velocity.data[3] = 0;
+        // // publish joint velocity
+        // joints_vel_pub.publish(joint_velocity);
 
-        ee_target[0] = msg->pose.position.x;
-        ee_target[1] = msg->pose.position.y;
-        ee_target[2] =  msg->pose.position.z;
+        ee_target[2] = msg->pose.position.x;
+        ee_target[3] = msg->pose.position.y;
+        ee_target[4] =  msg->pose.position.z;
+        tf2::Quaternion q(msg->pose.orientation.x,  msg->pose.orientation.y, msg->pose.orientation.z, msg->pose.orientation.w);
+        tf2::Matrix3x3 m(q);
+        double roll, pitch, yaw;
+        m.getRPY(roll, pitch, yaw);
+        ee_target[5] =  yaw;
 
 
         Vector6d  err(6,1);
@@ -161,39 +169,29 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 
         // arm pose task
         arm_pose.setDesired(ee_target); //set desired arm pose from sequencer 
+        cout<<"ee_target: "<<endl<<ee_target<<endl;
         arm_pose.update(mobile_manipulator); //update arm pose
         arm_pose.getJacobian(J); //get Jacobian
         J_bar = J*P;
         mobile_manipulator.getDLS(J_bar, _damping, J_DLS);
         arm_pose.getError(err); //get error
-
+        cout<<"err: "<<endl<<err<<endl;
+        // cout<<"EE_target: "<<ee_target<<endl;
         dq += J_DLS *(_K*err - J*dq);
         P -= J_bar.completeOrthogonalDecomposition().pseudoInverse() * J_bar;
-        
-
-
-        // forwardKinematics(joint_values, ee_pose);
-        // cout<<"ee_pose: "<<endl<<ee_pose<<endl;
-        // // get Jacobian
-        // getJacobian(joint_values, J);
-        // error(0,0) = ee_target[0] - ee_pose[0];
-        // error(1,0) = ee_target[1] - ee_pose[1];
-        // error(2,0) = ee_target[2] - ee_pose[2];
-        
-        // joint velocity
-        // getDLS(J, _damping, J_DLS);
-        // dq += J_DLS*(_K*error);
 
         // publish joint velocity
-        joint_velocity.data.resize(3);
-        joint_velocity.data[0] = dq(0,0);
-        joint_velocity.data[1] = dq(1,0);
-        joint_velocity.data[2] = dq(2,0);
+        joint_velocity.data.resize(4);
+        joint_velocity.data[0] = dq(2,0);
+        joint_velocity.data[1] = dq(3,0);
+        joint_velocity.data[2] = dq(4,0);
+        joint_velocity.data[3] = dq(5,0);
         joints_vel_pub.publish(joint_velocity);
 
         mobile_manipulator.getPose(ee_pose);
+        cout<<"EE_pose: "<<endl<<ee_pose<<endl;
         // publish error message to sequencer node
-        dist_error = hypot(hypot(ee_target[0]-ee_pose[0], ee_target[1]-ee_pose[1]), ee_target[2]-ee_pose[2]); 
+        dist_error = hypot(hypot(ee_target[2]-ee_pose[2], ee_target[3]-ee_pose[3]), ee_target[4]-ee_pose[4]); 
         ee_pose_err_msg.data.resize(1);
         ee_pose_err_msg.data[0] = dist_error;
         ee_pose_err_pub.publish(ee_pose_err_msg);
