@@ -144,7 +144,7 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         Eigen::Vector3d  err(3,1), dq(3,1);
         Eigen::Matrix3d J, J_bar, J_DLS, P = Eigen::Matrix3d::Identity();
 
-
+        // joint limit task
         joint_limits.update(mobile_manipulator);
         Eigen::RowVector3d JJ, J_bar_;
         Eigen::Vector3d J_DLS_, J_bar_inv; 
@@ -160,7 +160,7 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
             P -= J_bar_inv * J_bar_;
         }
 
-
+        // arm pose task
         arm_pose.update(mobile_manipulator); //update arm pose
         arm_pose.getJacobian(J); //get Jacobian
         J_bar = J*P;
