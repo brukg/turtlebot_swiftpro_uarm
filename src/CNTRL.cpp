@@ -50,7 +50,7 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     private_nh.param<bool>("mobile_base", _is_mobile_base, 1);
 
     // subscribers
-    // pose_sub = node.subscribe(_pose_sub_topic, 1, &CNTRL::poseCallback, this);
+    pose_sub = node.subscribe(_pose_sub_topic, 1, &CNTRL::poseCallback, this);
     joints_sub = node.subscribe(_joint_state_sub_topic, 9, &CNTRL::jointsCallback, this);
     ee_sub = node.subscribe(_ee_target_pose_sub_topic, 3, &CNTRL::controlCallback, this);
     
@@ -67,11 +67,12 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     is_pose_start = true;
 
     robot_pose.setIdentity();//initialize robot pose
+    // robot_pose_eigen << Eigen::Matrix4d::setIdentity();//initialize robot pose
 
 
     // link lengths in meters
     // _link_1 = 0.456;   _link_2 = 0.142;  _link_3 = 0.;  _link_4 = 0.142; _link_5 = 0.1588 +0.56;
-    joint_values.setZero(6);
+    joint_values.setZero();
 
     // r2b <<  0, -1, 0, 0.037,
     //         1, 0, 0, 0,
@@ -79,6 +80,7 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     //         0, 0, 0, 1;
     ee_pose.setZero(6); ee_target <<0, 0,_X, _Y, _Z, 0;
     is_joints_read = false;// _is_vacuum_gripper = false;// _is_joint_vel_stopped = false;
+    mobile_manipulator.setMobile(_is_mobile_base);
 
 }
 
@@ -115,9 +117,18 @@ void CNTRL::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPt
     robot_pose.setRotation(q);
     robot_pose.setOrigin(tf2::Vector3(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z));
     is_pose_start = false;
-    robot_pose_eigen = Eigen::Isometry3d(Eigen::Translation3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z)
-                             * Eigen::Quaterniond(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
-    cout<<"robot_pose: "<<endl<<robot_pose.getOrigin().x()<<" "<<robot_pose.getOrigin().y()<<" "<<robot_pose.getOrigin().z()<<endl;
+    tf2::Matrix3x3 rot_1;
+    rot_1.setRotation(q); 
+    // =  tf2::Matrix3x3(q.getRotation());
+
+    robot_pose_eigen << rot_1[0][0], rot_1[0][1], rot_1[0][2], msg->pose.pose.position.x,
+                        rot_1[1][0], rot_1[1][1], rot_1[1][2], msg->pose.pose.position.x,
+                        rot_1[2][0], rot_1[2][1], rot_1[2][2], msg->pose.pose.position.x,
+                        0, 0, 0, 1;
+    // robot_pose_eigen = Eigen::Isometry3d(Eigen::Translation3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z)
+    //                          * Eigen::Quaterniond(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
+    mobile_manipulator.setBasePose(robot_pose_eigen);
+    // cout<<"robot_pose: "<<endl<<robot_pose.getOrigin().x()<<" "<<robot_pose.getOrigin().y()<<" "<<robot_pose.getOrigin().z()<<endl;
 
 }
 
@@ -163,23 +174,24 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
             joint_limits.getError(err_);
             cout<<"err_: "<<err_<<endl;
             dq += J_DLS_ *(_K*err_ - JJ*dq);
-            J_bar_inv = J_bar_.transpose() * (J_bar_* J_bar_.transpose()).completeOrthogonalDecomposition().pseudoInverse();
+            J_bar_inv = J_bar_.transpose() * (J_bar_* J_bar_.transpose()).inverse();
             P -= J_bar_inv * J_bar_;
         }
 
         // arm pose task
         arm_pose.setDesired(ee_target); //set desired arm pose from sequencer 
-        cout<<"ee_target: "<<endl<<ee_target<<endl;
+        // cout<<"ee_target: "<<endl<<ee_target<<endl;
         arm_pose.update(mobile_manipulator); //update arm pose
         arm_pose.getJacobian(J); //get Jacobian
         J_bar = J*P;
         mobile_manipulator.getDLS(J_bar, _damping, J_DLS);
         arm_pose.getError(err); //get error
-        cout<<"err: "<<endl<<err<<endl;
+        // cout<<"err: "<<endl<<err<<endl;
         // cout<<"EE_target: "<<ee_target<<endl;
         dq += J_DLS *(_K*err - J*dq);
         P -= J_bar.completeOrthogonalDecomposition().pseudoInverse() * J_bar;
-
+        cout<<"err: "<<err<<endl;
+        cout<<"dq: "<<dq<<endl;
         // publish joint velocity
         joint_velocity.data.resize(4);
         joint_velocity.data[0] = dq(2,0);

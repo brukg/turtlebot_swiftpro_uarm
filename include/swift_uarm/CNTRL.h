@@ -85,7 +85,7 @@ class CNTRL
         bool _is_joint_vel_target_control; //if joint vel target control
 
         tf2::Transform robot_pose;//slam robot pose
-        Eigen::Isometry3d robot_pose_eigen;//slam robot pose
+        Eigen::Matrix4d robot_pose_eigen;//slam robot pose
         Position arm_pose; //position task
         JointLimits joint_limits; //joint limits
         MobileManipulator mobile_manipulator; //mobile manipulator

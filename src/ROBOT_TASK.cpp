@@ -13,6 +13,8 @@ MobileManipulator::MobileManipulator(){
             1, 0, 0, 0,
             0, 0, 1, 0.147,
             0, 0, 0, 1;
+    _is_mobile_base = false;
+    base_pose.setIdentity();
 
 }
 
@@ -26,10 +28,10 @@ void MobileManipulator::getPose(Vector6d& ee_pose)
     forwardKinematics(joint_values, ee_pose);
 }
 
-void MobileManipulator::getBasePose(Eigen::Isometry3d& base_pose){
+void MobileManipulator::getBasePose(Eigen::Matrix4d& base_pose){
     base_pose = this->base_pose;
 }
-void MobileManipulator::setBasePose(Eigen::Isometry3d& base_pose){
+void MobileManipulator::setBasePose(Eigen::Matrix4d& base_pose){
     this->base_pose = base_pose;
 }
 void MobileManipulator::setJoints(Vector6d joints)
@@ -39,6 +41,11 @@ void MobileManipulator::setJoints(Vector6d joints)
 void MobileManipulator::getJoints(Vector6d &q)
 {   
     q = this->joint_values;
+}
+
+void MobileManipulator::setMobile(bool& _is_mobile_base)
+{
+    this->_is_mobile_base = _is_mobile_base;
 }
 /*
 * @brief get the forward kinematics of the arm
@@ -54,6 +61,8 @@ void MobileManipulator::forwardKinematics(Vector6d& joints, Vector6d& ee_pose)
 				    - _link_2 * sin(joints[4]);
     Eigen::Vector2d eta;
     // eta[1] = yaw;
+    eta[0] = joints[1];
+    eta[1] = joints[0];
     Eigen::Vector4d ee_p;            
     ee_p(0) = horizontal * cos(joints[2]); //x arm position 
 	ee_p(1) = horizontal * sin(joints[2]); //y arm position
@@ -61,7 +70,9 @@ void MobileManipulator::forwardKinematics(Vector6d& joints, Vector6d& ee_pose)
     ee_p(3) =  1;
     double yaw = joints[2] + joints[5];
     Eigen::Vector4d temp;  //using arm on mobile base
-    if (_is_mobile_base) {temp = base_pose * r2b * ee_p; ee_pose = temp.head(3);} //if using mobile base
+    // cout<<"base_pose"<<base_pose<<endl;
+    // cout<<"r2b"<<r2b<<endl;
+    if (_is_mobile_base) {temp = base_pose * r2b * ee_p; ee_pose << 0, 0, temp[0], temp[1], temp[2], yaw;} //if using mobile base
     else ee_pose << 0, 0, ee_p[0], ee_p[1], ee_p[2], yaw; //only arm
 	// cout<<"ee from fk"<< ee_pose;
 }
@@ -71,21 +82,30 @@ void MobileManipulator::forwardKinematics(Vector6d& joints, Vector6d& ee_pose)
 */
 void MobileManipulator::getJacobian(Vector6d& joints, Matrix6d &J)
 {
+    double r_yaw = atan2(base_pose(1,0), base_pose(0,0)); //yaw of the base in the world frame
+    double b_yaw = atan2(r2b(1,0), r2b(0,0)); //yaw of the base to the arm
+
     //swiftpro uarm jacobian matrix
-    double horizontal = _link_1 * sin(joints[3]) 
+    double horizontal =  _link_1 * sin(joints[3]) 
 				   + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x;
 
 	double verical = _link_1 * cos(joints[3]) 
 				  - _link_2 * sin(joints[4]) + _base_offset_z;
-    double yaw = joints[2] + joints[5];
-
+    double ee_yaw = joints[2] + joints[5];
+    // if (_is_mobile_base) { 
+    //     horizontal += base_pose(0,3); 
+    //     horizontal += r2b(0,3); 
+    //     verical += base_pose(2,3); 
+    //     verical += r2b(2,3); 
+    //     ee_yaw += b_yaw;
+    // }
     // derivative of x with respect to joints
-	double dx_j0 = horizontal * -sin(joints[2]);
+	double dx_j0 = horizontal * -sin(joints[0] + 1.57 + joints[2]);
     double dx_j1 = _link_1 * cos(joints[3]) * cos(joints[2]); 
 	double dx_j2 =  _link_2 * -sin(joints[4]) * cos(joints[2]);
                     
     // derivative of y with respect to joints
-	double dy_j0 = horizontal * cos(joints[2]);
+	double dy_j0 = horizontal * cos(joints[0] + 1.57 + joints[2]);
 	double dy_j1 = _link_1 * cos(joints[3] )  * sin(joints[2]); 
 	double dy_j2 = _link_2 * -sin(joints[4])  * sin(joints[2]);
 
@@ -100,13 +120,25 @@ void MobileManipulator::getJacobian(Vector6d& joints, Matrix6d &J)
     double dyaw_j1 = 0;
     double dyaw_j2 = 0;
     double dyaw_j3 = 1;
-	
+    Eigen::MatrixXd J_temp(3,2), J_temp_inv(2,3);
+    J_temp << cos(joints(0)),   0,
+              sin(joints(0)),   0,
+              0,               1;
+    // J_temp_inv = J_temp.transpose() * (J_temp * J_temp.transpose()).inverse();
+	// cout<<"J_temp_inv"<<J_temp_inv<<endl;
     J << 0, 0, 0,       0,      0,      0,
          0, 0, 0,       0,      0,      0,
          0, 0, dx_j0,   dx_j1, dx_j2,   0,
          0, 0, dy_j0,   dy_j1, dy_j2,   0,
          0, 0, 0,       dz_j1, dz_j2,   0,
          0, 0, dyaw_j0, 0,      0,      dyaw_j3;
+
+    // J.block<2,3>(0,0) = J_temp.inverse();
+    // cout<<"J"<<J<<endl;
+
+    if (_is_mobile_base) {
+
+    }
 }
 
 

@@ -18,12 +18,13 @@ class MobileManipulator
         ~MobileManipulator() {};
         void getEEJacobian(Matrix6d &J);
         void getPose(Vector6d& ee_pose);
-        void getBasePose(Eigen::Isometry3d& base_pose);
-        void setBasePose(Eigen::Isometry3d& base_pose);
+        void getBasePose(Eigen::Matrix4d& base_pose);
+        void setBasePose(Eigen::Matrix4d& base_pose);
         void getDLS(Matrix6d &J, double lambda, Matrix6d &J_DLS); //DLS
         void getDLS(RowVector6d &J, double lambda, Vector6d &J_DLS); //DLS
         void setJoints(Vector6d joints);
         void getJoints(Vector6d &q);
+        void setMobile(bool& is_active);
 
     private:
         void forwardKinematics(Vector6d& joints, Vector6d& ee_pose); //forward kinematics        
@@ -38,7 +39,7 @@ class MobileManipulator
         Vector6d joint_values;
         float _link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z;
         Eigen::Matrix4d r2b; //robot to base transformation
-        Eigen::Isometry3d base_pose;
+        Eigen::Matrix4d base_pose;
         bool _is_mobile_base; 
 
 };
