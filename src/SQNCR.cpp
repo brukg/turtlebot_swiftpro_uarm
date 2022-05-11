@@ -23,6 +23,7 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
     // pose topic
     private_nh.param<std::string>("joint_vel_pub_topic", _joint_vel_pub_topic, "NONE");
     private_nh.param<std::string>("odom_pub_topic", _odom_pub_topic, "NONE");
+    private_nh.param<string>("base_vel_pub_topic", _base_vel_pub_topic, "NONE");
     
     // subscribers params
     private_nh.param<std::string>("pose_sub_topic", _pose_sub_topic, "NONE");
@@ -53,12 +54,13 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
 
     // subscribers
     // pose_sub = node.subscribe(_pose_sub_topic, 1, &SQNCR::poseCallback, this);
-    ee_sub = node.subscribe(__ee_pose_err_sub_topic, 3, &SQNCR::eeposeCallback, this);
+    ee_sub = node.subscribe(__ee_pose_err_sub_topic, 1, &SQNCR::eeposeCallback, this);
     
     
     // publishers
     joints_vel_pub = node.advertise<std_msgs::Float64MultiArray>(_joint_vel_pub_topic, 1);
     goal_pub = node.advertise<geometry_msgs::PoseStamped>(_ee_target_pose_sub_topic, 1);
+    base_velocity_pub = node.advertise<geometry_msgs::Twist>(_base_vel_pub_topic, 1);
     sequencer = node.createTimer(ros::Duration(1/_seq_freq), &SQNCR::taskSequencer, this); // timer for task sequencer
 
     //initialising values
@@ -81,45 +83,11 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
             1, 0, 0, 0,
             0, 0, 1, 0.147,
             0, 0, 0, 1;
-    ee_pose.setZero(); ee_target << 0, 0, _X, _Y, _Z, 0;
+    ee_pose.setZero(); ee_target <<_X, _Y, _Z, 0;
     is_joints_read = false; _is_vacuum_gripper = false; _is_joint_vel_stopped = false;
     ee_error = 10; 
 }
 
-/* @brief base_link to arm transformation */
-bool SQNCR::getArm2BaseTransform()
-{
-    ROS_INFO("Getting static TF from '%s' to '%s'", _arm_frame_id.c_str(), _base_frame_id.c_str());
-
-    mArm2BaseTransfValid = false;
-    static bool first_error = true;
-
-    // ----> Static transforms
-    // Sensor to Base link
-    try {
-        // Save the transformation
-        ROS_INFO("Getting static TF from '%s' to '%s'", _arm_frame_id.c_str(), _base_frame_id.c_str());
-        geometry_msgs::TransformStamped a2b = mTfBuffer->lookupTransform(_base_frame_id, _arm_frame_id, ros::Time(0), ros::Duration(0.1));
-
-        // Get the TF2 transformation
-        tf2::fromMsg(a2b.transform, mArm2BaseTransf);
-
-        double roll, pitch, yaw;
-        tf2::Matrix3x3(mArm2BaseTransf.getRotation()).getRPY(roll, pitch, yaw);
-        ROS_INFO("%.3f", roll);
-    } catch (tf2::TransformException& ex) {
-        ROS_INFO("%s", ex.what());
-        if (!first_error) {
-            first_error = false;
-        }
-
-        mArm2BaseTransf.setIdentity();
-        return false;
-    }
-    // <---- Static transforms
-    mArm2BaseTransfValid = true;
-    return true;
-}
 
 /* @brief pose callback */
 void SQNCR::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
@@ -146,13 +114,14 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
 {
     std_msgs::Float64MultiArray joint_velocity; // joint velocity
     geometry_msgs::PoseStamped pose_msg; //pose message
-    // double dist_error = hypot(hypot(ee_target[0]-ee_pose[0], ee_target[1]-ee_pose[1]), ee_target[2]-ee_pose[2]); 
-    // cout<<"ee_error: "<<ee_error<<endl;
+    geometry_msgs::Twist base_velocity;
+
+    cout<<"dist_error: "<<ee_error<<endl;
     if (ee_error>_dist_err_threshold){
             pose_msg.header.stamp = ros::Time::now();
-            pose_msg.pose.position.x = ee_target[2];
-            pose_msg.pose.position.y = ee_target[3];
-            pose_msg.pose.position.z = ee_target[4];
+            pose_msg.pose.position.x = ee_target[0];
+            pose_msg.pose.position.y = ee_target[1];
+            pose_msg.pose.position.z = ee_target[2];
             // tf2::Matrix3x3 m; m.setRPY(0, 0, ee_target[5]);
             tf2::Quaternion q; q.setRPY(0, 0, ee_target[5]);
             // tf2::convert(m, q);
@@ -169,7 +138,16 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
             joint_velocity.data[0] = 0;
             joint_velocity.data[1] = 0;
             joint_velocity.data[2] = 0;
+
+            // publish base velocity    
+            base_velocity.linear.x = 0;
+            base_velocity.linear.y = 0;
+            base_velocity.linear.z = 0;
+            base_velocity.angular.x = 0;
+            base_velocity.angular.y = 0;
+            base_velocity.angular.z = 0;
             cout<<"stopping"<<endl;
+            base_velocity_pub.publish(base_velocity);
             joints_vel_pub.publish(joint_velocity);
             _is_joint_vel_stopped = true;
         }

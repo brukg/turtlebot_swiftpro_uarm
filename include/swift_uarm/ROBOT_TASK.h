@@ -6,7 +6,7 @@
 #include <eigen3/Eigen/Dense>
 
 using namespace std;
-typedef Eigen::Matrix< double, 6, 6 > Matrix6d;
+typedef Eigen::MatrixXd Matrix6d;
 typedef Eigen::Matrix< double, 1, 6 > RowVector6d;
 typedef Eigen::Matrix< double, 6, 1 > Vector6d;
 // #include <tf2_ros/buffer.h>
@@ -17,7 +17,7 @@ class MobileManipulator
         MobileManipulator();
         ~MobileManipulator() {};
         void getEEJacobian(Matrix6d &J);
-        void getPose(Vector6d& ee_pose);
+        void getPose(Eigen::Vector4d& ee_pose);
         void getBasePose(Eigen::Matrix4d& base_pose);
         void setBasePose(Eigen::Matrix4d& base_pose);
         void getDLS(Matrix6d &J, double lambda, Matrix6d &J_DLS); //DLS
@@ -27,14 +27,14 @@ class MobileManipulator
         void setMobile(bool& is_active);
 
     private:
-        void forwardKinematics(Vector6d& joints, Vector6d& ee_pose); //forward kinematics        
+        void forwardKinematics(Vector6d& joints, Eigen::Vector4d& ee_pose); //forward kinematics        
         void getJacobian(Vector6d& joints, Matrix6d &J); //Jacobian matrix
         
         void update();
         void getEETransform();
         void getJointPos( );
         void getDOF();
-
+        void wrap_angle(double& a);
         // variables
         Vector6d joint_values;
         float _link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z;
@@ -79,14 +79,14 @@ class Position : public TASK
         ~Position() {};
         void update(MobileManipulator &robot);
         void getJacobian(Matrix6d &J);
-        void getError(Vector6d &error);
+        void getError(Eigen::Vector4d &error);
         bool isActive();
-        void setDesired(Vector6d &sigma_d);
-        void getDesired(Vector6d &sigma_d);
+        void setDesired(Eigen::Vector4d &sigma_d);
+        void getDesired(Eigen::Vector4d &sigma_d);
 
     private:
         Matrix6d  J, J_DLS;
-        Vector6d error, sigma_d, ee_pose;
+        Eigen::Vector4d error, sigma_d, ee_pose;
         bool active;
 
 };

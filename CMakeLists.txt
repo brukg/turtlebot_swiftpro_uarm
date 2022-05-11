@@ -53,10 +53,16 @@ include_directories(
 
 add_executable(robot_control src/robot_control.cpp src/CNTRL.cpp src/ROBOT_TASK.cpp)
 add_executable(task_sequencer src/task_sequencer.cpp src/SQNCR.cpp)
+add_executable(aruco_detector src/aruco_detector.cpp src/ARUCO.cpp)
+
 target_link_libraries(robot_control
                   ${catkin_LIBRARIES}  )
 target_link_libraries(task_sequencer
                   ${catkin_LIBRARIES}  )
+target_link_libraries(aruco_detector
+                  ${catkin_LIBRARIES}  )
+
 add_dependencies(robot_control ${catkin_EXPORTED_TARGETS})
 add_dependencies(task_sequencer ${catkin_EXPORTED_TARGETS})
+add_dependencies(aruco_detector ${catkin_EXPORTED_TARGETS})
 

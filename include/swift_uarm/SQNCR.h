@@ -43,7 +43,7 @@ class SQNCR
         ros::Timer sequencer; //task sequencer
         ros::Subscriber pose_sub, joints_sub, ee_sub; //subscriber robot pose, joint state, end effector pose(target)
         ros::Publisher joint_vel_pub_topic, goal_pub; //publishes geometry_msgs::PoseWithCovariance msgs
-        ros::Publisher joints_vel_pub;  //publishes sensor_msgs::PointCloud2
+        ros::Publisher joints_vel_pub, base_velocity_pub;  //publishes sensor_msgs::PointCloud2
         Eigen::Matrix4f prev_transformation; //cumulative transformation until the previous time instance
         bool is_initial, is_pose_start, is_joints_read; //boolean to tell if this is 1st iteration of the algo and start of imu and pose reading
         Eigen::Quaternionf  _prev_quat; 
@@ -53,7 +53,7 @@ class SQNCR
         /*---------sub parameters----------*/
         std::string _point_cloud_sub_topic; //point cloud ros topic to subscribe to
         std::string _pose_sub_topic; //pose ros topic to which to subscribe
-        std::string _joint_state_sub_topic, _joint_vel_pub_topic;//joints ros topic to which to subscribe
+        std::string _joint_state_sub_topic, _joint_vel_pub_topic, _base_vel_pub_topic;//joints ros topic to which to subscribe
         std::string _ee_target_pose_sub_topic, __ee_pose_err_sub_topic; //ee target pose topic to which to subscribe
 
         /*---------pub parameters----------*/
@@ -74,8 +74,7 @@ class SQNCR
         //link lengths
         float _link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z;
         Eigen::Vector3d ee_pose; //end effector pose
-        Vector6d ee_target;   //end effector target
-        Eigen::Vector4d joint_values; //joint values
+        Eigen::Vector4d ee_target,joint_values; //joint values
         Eigen::Matrix4d r2b; //robot to base transformation
         // parameters
         float _K, _X,_Y,_Z, _damping, _seq_freq; //gain an height

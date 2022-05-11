@@ -23,7 +23,7 @@ void MobileManipulator::getEEJacobian(Matrix6d &J)
     getJacobian(this->joint_values, J);
 
 }
-void MobileManipulator::getPose(Vector6d& ee_pose)
+void MobileManipulator::getPose(Eigen::Vector4d& ee_pose)
 {
     forwardKinematics(joint_values, ee_pose);
 }
@@ -50,101 +50,105 @@ void MobileManipulator::setMobile(bool& _is_mobile_base)
 /*
 * @brief get the forward kinematics of the arm
 */
-void MobileManipulator::forwardKinematics(Vector6d& joints, Vector6d& ee_pose)
+void MobileManipulator::forwardKinematics(Vector6d& joints, Eigen::Vector4d& ee_pose)
 {
 	//swiftpro uarm forward kinematics
     // cout<<"joints"<<joints<<endl;
-    double horizontal = _link_1 * sin(joints[3]) 
-				        + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x;
-
-	double verical = _link_1 * cos(joints[3]) 
-				    - _link_2 * sin(joints[4]);
-    Eigen::Vector2d eta;
-    // eta[1] = yaw;
-    eta[0] = joints[1];
-    eta[1] = joints[0];
+    // Eigen::Vector2d eta;
+    // // eta[1] = yaw;
+    // eta[0] = joints[0];
+    // eta[1] = joints[1];
+    double b_yaw = atan2(r2b(1,0), r2b(0,0)); //yaw of the base to the arm 90 degrees
+  
     Eigen::Vector4d ee_p;            
-    ee_p(0) = horizontal * cos(joints[2]); //x arm position 
-	ee_p(1) = horizontal * sin(joints[2]); //y arm position
-	ee_p(2) = verical + _base_offset_z - _vacuum_offset_z; //z arm position
+    
+    ee_p(0) = (_link_1 * sin(joints[3])  + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x) * cos(joints[2]); //x arm position 
+
+	  ee_p(1) = (_link_1 * sin(joints[3]) + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x) * sin(joints[2]); //y arm position
+	
+    ee_p(2) = (_link_1 * cos(joints[3])  - _link_2 * sin(joints[4])) + _base_offset_z - _vacuum_offset_z; //z arm position
+    
     ee_p(3) =  1;
-    double yaw = joints[2] + joints[5];
+    double yaw;  //yaw of eend effector is the sum of yaw of base and yaw of joints 0 and 3
     Eigen::Vector4d temp;  //using arm on mobile base
-    // cout<<"base_pose"<<base_pose<<endl;
-    // cout<<"r2b"<<r2b<<endl;
-    if (_is_mobile_base) {temp = base_pose * r2b * ee_p; ee_pose << 0, 0, temp[0], temp[1], temp[2], yaw;} //if using mobile base
-    else ee_pose << 0, 0, ee_p[0], ee_p[1], ee_p[2], yaw; //only arm
-	// cout<<"ee from fk"<< ee_pose;
+
+    // if(_is_mobile_base) //if using mobile base    
+    if (_is_mobile_base) {
+        temp = base_pose * r2b * ee_p; 
+        yaw = joints[1] + b_yaw + joints[2] + joints[5];
+        wrap_angle(yaw);
+        ee_pose << temp[0], temp[1], temp[2], yaw; 
+    }else { //if using fixed base //only arm on fixed base
+    yaw = joints[2] + joints[5];
+    ee_pose << ee_p[0], ee_p[1], ee_p[2], yaw;
+    } 
 }
 
+void MobileManipulator::wrap_angle(double& a)
+{
+  while ((a) >  M_PI) a -= 2*M_PI;
+  while ((a) < -M_PI) a += 2*M_PI;
+};
 /*
 * @brief get the Jacobian of the arm
 */
 void MobileManipulator::getJacobian(Vector6d& joints, Matrix6d &J)
-{
-    double r_yaw = atan2(base_pose(1,0), base_pose(0,0)); //yaw of the base in the world frame
-    double b_yaw = atan2(r2b(1,0), r2b(0,0)); //yaw of the base to the arm
+{   
+    double r_yaw = joints[1]; //atan2(base_pose(1,0), base_pose(0,0)); //yaw of the base in the world frame joints[1]
+    double b_yaw = atan2(r2b(1,0), r2b(0,0)); //yaw of the base to the arm 90 degrees
 
-    //swiftpro uarm jacobian matrix
-    double horizontal =  _link_1 * sin(joints[3]) 
-				   + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x;
+    Eigen::Vector4d ee_p;            
+    
+    ee_p(0) = base_pose(0,3) + r2b(0,3)*cos(r_yaw) + (_link_1 * sin(joints[3])  + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x) * cos(b_yaw +joints[2]); //x arm position 
 
-	double verical = _link_1 * cos(joints[3]) 
-				  - _link_2 * sin(joints[4]) + _base_offset_z;
-    double ee_yaw = joints[2] + joints[5];
-    // if (_is_mobile_base) { 
-    //     horizontal += base_pose(0,3); 
-    //     horizontal += r2b(0,3); 
-    //     verical += base_pose(2,3); 
-    //     verical += r2b(2,3); 
-    //     ee_yaw += b_yaw;
-    // }
-    // derivative of x with respect to joints
-	double dx_j0 = horizontal * -sin(joints[0] + 1.57 + joints[2]);
-    double dx_j1 = _link_1 * cos(joints[3]) * cos(joints[2]); 
-	double dx_j2 =  _link_2 * -sin(joints[4]) * cos(joints[2]);
-                    
-    // derivative of y with respect to joints
-	double dy_j0 = horizontal * cos(joints[0] + 1.57 + joints[2]);
-	double dy_j1 = _link_1 * cos(joints[3] )  * sin(joints[2]); 
-	double dy_j2 = _link_2 * -sin(joints[4])  * sin(joints[2]);
+	  ee_p(1) = base_pose(1,3) + r2b(0,3)*sin(r_yaw) +  (_link_1 * sin(joints[3]) + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x) * sin(b_yaw +joints[2]); //y arm position
+	
+    ee_p(2) = base_pose(2,3) + r2b(2,3) + (_link_1 * cos(joints[3])  - _link_2 * sin(joints[4])) + _base_offset_z - _vacuum_offset_z; //z arm position
+    
+    ee_p(3) =  1;
 
-    // derivative of z with respect to joints
-	double dz_j0 = 0;
-	double dz_j1 = _link_1 * -sin(joints[3]); 
-	double dz_j2 = -_link_2 * cos(joints[4]);
+    double yaw = joints[1] + b_yaw + joints[2] + joints[5]; wrap_angle(yaw);
 
 
-    // derivative of yaw with respect to joints
-    double dyaw_j0 = 1;
-    double dyaw_j1 = 0;
-    double dyaw_j2 = 0;
-    double dyaw_j3 = 1;
-    Eigen::MatrixXd J_temp(3,2), J_temp_inv(2,3);
-    J_temp << cos(joints(0)),   0,
-              sin(joints(0)),   0,
-              0,               1;
-    // J_temp_inv = J_temp.transpose() * (J_temp * J_temp.transpose()).inverse();
-	// cout<<"J_temp_inv"<<J_temp_inv<<endl;
-    J << 0, 0, 0,       0,      0,      0,
-         0, 0, 0,       0,      0,      0,
-         0, 0, dx_j0,   dx_j1, dx_j2,   0,
-         0, 0, dy_j0,   dy_j1, dy_j2,   0,
-         0, 0, 0,       dz_j1, dz_j2,   0,
-         0, 0, dyaw_j0, 0,      0,      dyaw_j3;
+    double dx_j0 = cos(r_yaw );
+    double dx_j1 = -r2b(0,3)*sin(r_yaw);
+    double dx_j2 = -(_link_1 * sin(joints[3])  + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x) * sin(b_yaw +joints[2] );
+    double dx_j3 = (_link_1 * cos(joints[3])) * cos(b_yaw + joints[2] );
+    double dx_j4 = _link_2 * -sin(joints[4]) *  cos(b_yaw + joints[2]);
+    double dx_j5 = 0;
 
-    // J.block<2,3>(0,0) = J_temp.inverse();
-    // cout<<"J"<<J<<endl;
+    double dy_j0 = sin(r_yaw );
+    double dy_j1 = r2b(0,3)*cos(r_yaw);
+    double dy_j2 = (_link_1 * sin(joints[3])  + _link_2 * cos(joints[4]) + _base_offset_x + _vacuum_offset_x) * cos(b_yaw + joints[2]);   
+    double dy_j3 = (_link_1 * cos(joints[3])) * sin(b_yaw + joints[2]); 
+    double dy_j4 = _link_2 * -sin(joints[4]) *  sin(b_yaw + joints[2]);
+    double dy_j5 = 0;
+    
+    double dz_j0 = 0;
+    double dz_j1 = 0;
+    double dz_j2 = 0;
+    double dz_j3 = _link_1 * -sin(joints[3]);
+    double dz_j4 = _link_2 * -cos(joints[4]);
+    double dz_j5 = 0;
 
-    if (_is_mobile_base) {
+    double dyaw_j0 = 0;
+    double dyaw_j1 = 1;
+    double dyaw_j2 = 1;
+    double dyaw_j3 = 0;
+    double dyaw_j4 = 0;
+    double dyaw_j5 = 1;
+    J.setZero(4,6);
 
-    }
+    J <<    dx_j0,      dx_j1,      dx_j2,      dx_j3,      dx_j4, dx_j5,
+            dy_j0,      dy_j1,      dy_j2,      dy_j3,      dy_j4, dy_j5,
+            dz_j0,      dz_j1,      dz_j2,      dz_j3,      dz_j4, dz_j5,
+            dyaw_j0,    dyaw_j1,    dyaw_j2,    dyaw_j3,    dyaw_j4, dyaw_j5;
 }
 
 
 void MobileManipulator::getDLS(Matrix6d &J, double lambda, Matrix6d &J_DLS)
 {
-    J_DLS = J.transpose()*(J *J.transpose()  + pow(lambda, 2) * Matrix6d::Identity()).inverse();
+    J_DLS = J.transpose()*(J *J.transpose()  + pow(lambda, 2) * Matrix6d::Identity(4,4)).inverse();
 }
 
 void MobileManipulator::getDLS(RowVector6d &J, double lambda, Vector6d &J_DLS)
@@ -214,11 +218,11 @@ void Position::update(MobileManipulator &robot){
     this-> error = sigma_d - ee_pose;
 }
 
-void Position::setDesired(Vector6d &sigma_d){
+void Position::setDesired(Eigen::Vector4d &sigma_d){
     this-> sigma_d = sigma_d;
 }
 
-void Position::getDesired(Vector6d &sigma_d){
+void Position::getDesired(Eigen::Vector4d &sigma_d){
     sigma_d = this->sigma_d;
 }
 
@@ -231,7 +235,7 @@ void Position::getJacobian(Matrix6d &J)
     J = this->J;
 }
 
-void Position::getError(Vector6d &error)
+void Position::getError(Eigen::Vector4d &error)
 {
 
     error = this->error;
@@ -254,15 +258,15 @@ JointLimits::JointLimits(){
 //
 void JointLimits::update(MobileManipulator &robot){
     // robot.getEEJacobian(this->J);
-    this->J[2] = 1; 
+    this->J[3] = 1; 
     robot.getJoints(q);
     // cout<<this->jointlimits<<endl;
     // cout<<"q "<<this->q<<endl;
     // cout<<"j "<<this->J<<endl;
-    if (dxe==0 && q[2]>=jointlimits[0][1]-0.05){this->dxe=-1; this->active=true;}
-    if (dxe==0 && q[2]<=jointlimits[0][0]+0.05){this->dxe=1; this->active=true;}
-    if (dxe==-1 && q[2]<=jointlimits[0][1]-0.09){this->dxe=0; this->active=false;}
-    if (dxe==1 && q[2]>=jointlimits[0][0]+0.09){this->dxe=0; this->active=false;}
+    if (dxe==0 && q[3]>=jointlimits[1][1]-0.05){this->dxe=-1; this->active=true;}
+    if (dxe==0 && q[3]<=jointlimits[1][0]+0.05){this->dxe=1; this->active=true;}
+    if (dxe==-1 && q[3]<=jointlimits[1][1]-0.09){this->dxe=0; this->active=false;}
+    if (dxe==1 && q[3]>=jointlimits[1][0]+0.09){this->dxe=0; this->active=false;}
 }
 void JointLimits::setDesired(Eigen::Vector3d &sigma_d)
 {
