@@ -28,64 +28,45 @@ class SQNCR
         ~SQNCR() {};
 
     private:
-        // void cloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg); //point cloud callback
-        void poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg); //imu data callback
-        void jointsCallback(const sensor_msgs::JointState::ConstPtr& msg); //imu data callback
+        void arucoPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg); 
+        void jointsCallback(const sensor_msgs::JointState::ConstPtr& msg);
 
-        void eeposeCallback(const std_msgs::Float64MultiArray::ConstPtr& msg); //imu data callback
+        void eeposeerrCallback(const std_msgs::Float64MultiArray::ConstPtr& msg); 
         void taskSequencer(const ros::TimerEvent& event); //task sequencer
         
-        bool getArm2BaseTransform(); //tf frame transformation
-        void forwardKinematics(Eigen::Vector4d& joints, Eigen::Vector3d& ee_pose); //forward kinematics        
-        void getJacobian(Eigen::Vector4d& joints, Eigen::Matrix3d &J); //Jacobian matrix
-        void getDLS(Eigen::Matrix3d &J, double lambda, Eigen::Matrix3d &J_DLS); //DLS
-        
         ros::Timer sequencer; //task sequencer
-        ros::Subscriber pose_sub, joints_sub, ee_sub; //subscriber robot pose, joint state, end effector pose(target)
+        ros::Subscriber robot_pose_sub, aruco_pose_sub, joints_sub, ee_err_sub; //subscriber robot pose, joint state, end effector pose(target)
         ros::Publisher joint_vel_pub_topic, goal_pub; //publishes geometry_msgs::PoseWithCovariance msgs
         ros::Publisher joints_vel_pub, base_velocity_pub;  //publishes sensor_msgs::PointCloud2
-        Eigen::Matrix4f prev_transformation; //cumulative transformation until the previous time instance
-        bool is_initial, is_pose_start, is_joints_read; //boolean to tell if this is 1st iteration of the algo and start of imu and pose reading
-        Eigen::Quaternionf  _prev_quat; 
-        Eigen::Vector3f     _prev_trans; 
-        float ee_error, _dist_err_threshold, _prev_time_stamp; //time stamp of the previous point cloud
-
+        bool is_initial, is_robot_pose, is_aruco_pose, is_joints_read; //boolean to tell if this is 1st iteration of the algo and start of imu and pose reading
+        Eigen::Vector3f     aruco_pose; 
+        Eigen::Vector3f ee_error, joint_error, _prev_time_stamp; //time stamp of the previous point cloud
+        float _dist_err_threshold;
         /*---------sub parameters----------*/
         std::string _point_cloud_sub_topic; //point cloud ros topic to subscribe to
-        std::string _pose_sub_topic; //pose ros topic to which to subscribe
+        std::string _pose_sub_topic, _odom_sub_topic; //pose ros topic to which to subscribe
         std::string _joint_state_sub_topic, _joint_vel_pub_topic, _base_vel_pub_topic;//joints ros topic to which to subscribe
-        std::string _ee_target_pose_sub_topic, __ee_pose_err_sub_topic; //ee target pose topic to which to subscribe
+        std::string _aruco_pose_topic, _ee_target_pose_sub_topic, __ee_pose_err_sub_topic; //ee target pose topic to which to subscribe
 
         /*---------pub parameters----------*/
         std::string _pose_pub_topic; //pose ros topic to which to publish
         std::string _odom_pub_topic; //odom ros topic to which to publish
-        std::string _point_cloud_pub_topic;
         
 
         /* frames*/
         std::string _frame_id, _base_frame_id, _arm_frame_id; //frame ids
         tf2::Transform mArm2BaseTransf;    // Coordinates of the base frame in camera frame
-        bool mArm2BaseTransfValid = false;
-
-        /*---------joints----------*/
-        float _joint_angles[3]; //joint angles
-        float _joint_velocities[3]; //joint velocities
-
-        //link lengths
-        float _link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z;
-        Eigen::Vector3d ee_pose; //end effector pose
-        Eigen::Vector4d ee_target,joint_values; //joint values
-        Eigen::Matrix4d r2b; //robot to base transformation
         // parameters
         float _K, _X,_Y,_Z, _damping, _seq_freq; //gain an height
-        bool _is_mobile_base; //if mobile base
+        bool _is_mobile_base, _is_slam; //if mobile base
         bool _is_vacuum_gripper; //if vacuum gripper
-        bool _is_joint_vel_stopped; //if joint vel control is stopped
+        bool _is_base_stopped; //if joint vel control is stopped
         bool _is_ee_pose_control; //if ee pose control
         bool _is_ee_pose_target_control; //if ee target pose control
         bool _is_joint_control; //if joint control
         bool _is_joint_vel_target_control; //if joint vel target control
-
+        bool _is_error, _is_j_error;
+        bool _is_aruco_picked, _aruco_placing, _aruco_placed;
 
         
 

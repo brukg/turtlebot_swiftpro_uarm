@@ -8,6 +8,10 @@
 	<!-- <include file="$(find pose_slam)/pose_slam.launch"/> -->
 	<!-- <include file="$(find smal_world)/smal_world.launch"/> -->
 	<!-- <include file="$(find turtlebot_desktop)/sim_start.launch"/> -->
+	
+	<node pkg="swift_uarm" type="aruco_detector" name="aruco_detector" output="screen" clear_params="true">
+		<rosparam command="load" file="$(find swift_uarm)/config/config.yaml" />
+	</node>
 	<node pkg="swift_uarm" type="robot_control" name="robot_control" output="screen" clear_params="true">
 		<rosparam command="load" file="$(find swift_uarm)/config/config.yaml" />
 	</node>

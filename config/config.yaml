@@ -1,6 +1,6 @@
 
 
-seq_freq: 30
+seq_freq: 10
 # frames
 frame_id: odom
 base_frame_id: base_link
@@ -8,19 +8,20 @@ arm_frame_id: manipulator_base_link
 
 mobile_base: true #true use arm mounted on mobile base, false only arm
 # subscribers for arm mounted on mobile base
-joint_state_sub_topic: /turtlebot/joint_states #joints state subscriber mounted manipulator
-joint_vel_pub_topic: /turtlebot/manipulator/commands/velocity #manipulator joint velocity publisher manipulator mounted on turtlebot
-base_vel_pub_topic: /turtlebot/cmd_vel_mux/input/navi # base velocity
+joint_state_sub_topic: /turtlebot2/joint_states #joints state subscriber mounted manipulator
+joint_vel_pub_topic: /turtlebot2/manipulator/commands/velocity #manipulator joint velocity publisher manipulator mounted on turtlebot
+base_vel_pub_topic: /turtlebot2/cmd_vel_mux/input/navi # base velocity
+vacuume_service_topic_on: /turtlebot2/vacuum_gripper/on
+vacuume_service_topic_off: /turtlebot2/vacuum_gripper/off
 # subscribers for arm only
 # joint_state_sub_topic: /swiftpro/joint_states #joints state subscriber standalone manipulator
 # joint_vel_pub_topic: /swiftpro/manipulator/commands/velocity #joint velocity publisher manipulator standalone
 
-pose_sub_topic: /pose_slam/odom #position of mobile base from SLAM
+slam: false
+pose_sub_topic: /pose_slam/pose #position of mobile base from SLAM
+odom_sub_topic: /turtlebot2/odom
 ee_target_pose_pub_sub_topic: /move_base_simple/goal #position of mobile base from SLAM
 ee_pose_err_pub_sub_topic: /swift_uarm/control/ee_pose_err #position of mobile base from SLAM
-
-# publishers
-manu_joint_pose_pub_topic: /turtlebot/manipulator/commands/position #joint position publisher
 
 # links constant value in meters
 link_1: 0.142     #
@@ -33,11 +34,28 @@ vacuum_offset_x: 0.0565
 vacuum_offset_z: 0.0722 #0.122.2 #
 # offset from base to joint 2
 base_offset_x: 0.0132
-base_offset_z: 0.108
+base_offset_z: 0.148 # for physical turtlebot
+# base_offset_z: 0.108 # for turlebot in simulation
 gain: 0.8
-x: 0.5
-y: -0.5
-z: 0.3          # height of object to pick 0.128
+
+# inverse diagonal weights 
+wv: 0.001
+ww: 3
+wx: 1
+wy: 1
+wz: 1
 yaw: 0 # EE yaw
 damping: 0.00003  # height of object to pick 0.128
-dist_err_threshold: 0.05
+dist_err_threshold: 0.03
+base_dist_err_threshold: 0.35
+
+
+
+# camera_topic: /turtlebot/realsense_d435i/color/image_raw
+camera_topic: /turtlebot2/rs_d435i/color/image_raw
+# camera_info: /turtlebot/realsense_d435i/color/camera_info
+camera_info: /turtlebot2/rs_d435i/color/camera_info
+aruco_pose_topic: /aruco/pose
+marker_length_m: 0.055
+dictionary: 0
+dictionary_id: 30

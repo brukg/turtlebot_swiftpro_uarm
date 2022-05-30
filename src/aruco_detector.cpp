@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     ros::NodeHandle node;
     ros::NodeHandle private_nh("~");
 
-    CNTRL CNTRL(node, private_nh); //instance of CNTRL class
+    ARUCO ARUCO(node, private_nh); //instance of CNTRL class
 
     ros::Rate loop_rate(10);
 

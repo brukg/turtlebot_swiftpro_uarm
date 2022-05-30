@@ -1,5 +1,4 @@
-#include "swift_uarm/CNTRL.h"
-#include "swift_uarm/utils.h"
+#include "swift_uarm/ARUCO.h"
 #include <iostream>
 #include <chrono>
 #include <math.h> 
@@ -16,215 +15,179 @@
 using namespace std;
 
 /* @brief Constructor */
-CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
+ARUCO::ARUCO(ros::NodeHandle node, ros::NodeHandle private_nh):image_transport_(node)
 {
     /* Loading parameters  */
 
-    // pose topic
-    private_nh.param<string>("joint_vel_pub_topic", _joint_vel_pub_topic, "NONE");
-    private_nh.param<string>("ee_pose_err_pub_sub_topic", _ee_pose_err_topic, "NONE");
-    private_nh.param<string>("odom_pub_topic", _odom_pub_topic, "NONE");
-    private_nh.param<string>("base_vel_pub_topic", _base_vel_pub_topic, "NONE");
-    
     // subscribers params
+    private_nh.param<string>("odom_sub_topic", _odom_sub_topic, "NONE");
     private_nh.param<string>("pose_sub_topic", _pose_sub_topic, "NONE");
-    private_nh.param<string>("joint_state_sub_topic", _joint_state_sub_topic, "NONE");
-    private_nh.param<string>("ee_target_pose_pub_sub_topic", _ee_target_pose_sub_topic, "NONE");
+    private_nh.param<string>("camera_topic", _camera_topic, "NONE");
+    private_nh.param<string>("camera_info", _camera_info, "NONE");
+    private_nh.param<string>("aruco_pose_topic", _aruco_pose_topic, "NONE");
+    private_nh.param<int>("dictionary", _dictionary, 0);
+    private_nh.param<int>("dictionary_id", _dictionary_id, 0);
+    private_nh.param<double>("marker_length_m", _marker_length_m, 0.0);
+    private_nh.param<bool>("slam", _is_slam, 0);
+
+
+    // private_nh.param<cv::Mat>("camera_matrix", _camera_matrix);
+    // private_nh.param<cv::Mat>("dist_coeffs", _dist_coeffs);
     
     // frames
     private_nh.param<string>("frame_id", _frame_id, "NONE");
-    private_nh.param<string>("arm_frame_id", _arm_frame_id, "NONE");
     private_nh.param<string>("base_frame_id", _base_frame_id, "NONE");
 
-    // constants
-    private_nh.param<float>("link_1", _link_1, 0.0);
-    private_nh.param<float>("link_2", _link_2, 0.0);
-    private_nh.param<float>("base_offset_x", _base_offset_x, 0.0);
-    private_nh.param<float>("base_offset_z", _base_offset_z, 0.0);
-    private_nh.param<float>("vacuum_offset_x", _vacuum_offset_x, 0.0);
-    private_nh.param<float>("vacuum_offset_z", _vacuum_offset_z, 0.0);
-    private_nh.param<float>("gain", _K, 10.0);
-    private_nh.param<float>("x", _X, 0.0);
-    private_nh.param<float>("y", _Y, 0.0);
-    private_nh.param<float>("z", _Z, 0.0);
-    private_nh.param<float>("damping", _damping, 0.01);
-    private_nh.param<bool>("mobile_base", _is_mobile_base, 1);
-
     // subscribers
-    pose_sub = node.subscribe(_pose_sub_topic, 1, &CNTRL::poseCallback, this);
-    joints_sub = node.subscribe(_joint_state_sub_topic, 1, &CNTRL::jointsCallback, this);
-    ee_sub = node.subscribe(_ee_target_pose_sub_topic, 1, &CNTRL::controlCallback, this);
-    
+    if(_is_slam)  pose_sub = node.subscribe(_pose_sub_topic, 1, &ARUCO::poseCallback, this);
+    else  pose_sub = node.subscribe(_odom_sub_topic, 1, &ARUCO::odomCallback, this);
+    // image_transport_(node);
+    camera_sub = image_transport_.subscribe(_camera_topic, 1, &ARUCO::imageCallback, this);
+    caminfo_sub = node.subscribe(_camera_info, 1, &ARUCO::cameraInfoCallback, this);
     
     // publishers
-    joints_vel_pub = node.advertise<std_msgs::Float64MultiArray>(_joint_vel_pub_topic, 1);
-    ee_pose_err_pub = node.advertise<std_msgs::Float64MultiArray>(_ee_pose_err_topic, 1);
-    goal_pub = node.advertise<geometry_msgs::PoseStamped>(_ee_target_pose_sub_topic, 1);
-    base_velocity_pub = node.advertise<geometry_msgs::Twist>(_base_vel_pub_topic, 1);
+    goal_pub = node.advertise<geometry_msgs::PoseStamped>(_aruco_pose_topic, 1);
+    
     //initialising values
+    is_pose_start = false;
 
-    // _prev_quat = Eigen::Quaternion<float>::Zero();
-    // _prev_trans = Eigen::Matrix<float>::Zero();
-    is_pose_start = true;
+    // robot_pose.setIdentity();//initialize robot pose
+    robot_pose << Eigen::Matrix4d::Identity();//initialize robot pose
 
-    robot_pose.setIdentity();//initialize robot pose
-    // robot_pose_eigen << Eigen::Matrix4d::setIdentity();//initialize robot pose
+    is_pose_start = false;
+
+    dictionary =
+        cv::aruco::getPredefinedDictionary( \
+        cv::aruco::PREDEFINED_DICTIONARY_NAME(_dictionary));
+    _camera_matrix = cv::Mat::zeros(3, 3, CV_64F);
+    _dist_coeffs = cv::Mat::zeros(1, 5, CV_64F);
+    tf2::Matrix3x3 rot_1;
+    rot_1.setRPY(-1.571, 0, -1.571);; 
+    // =  tf2::Matrix3x3(q.getRotation());
+
+    c2b << rot_1[0][0], rot_1[0][1], rot_1[0][2], 0.138,
+            rot_1[1][0], rot_1[1][1], rot_1[1][2], 0,
+            rot_1[2][0], rot_1[2][1], rot_1[2][2], 0.065,
+            0, 0, 0, 1;
 
 
-    // link lengths in meters
-    // _link_1 = 0.456;   _link_2 = 0.142;  _link_3 = 0.;  _link_4 = 0.142; _link_5 = 0.1588 +0.56;
-    joint_values.setZero();
-    dq.setZero(6,1);
-    // r2b <<  0, -1, 0, 0.037,
-    //         1, 0, 0, 0,
-    //         0, 0, 1, 0.147,
-    //         0, 0, 0, 1;
-    ee_pose.setZero(4); ee_target <<_X, _Y, _Z, 0;
-    is_joints_read = false;  is_pose_start = false;// _is_vacuum_gripper = false;// _is_joint_vel_stopped = false;
-    mobile_manipulator.setMobile(_is_mobile_base);
-
-}
-
-/* @brief joints state listner */
-void CNTRL::jointsCallback(const sensor_msgs::JointState::ConstPtr& msg)
-{   
-    // cout << "jointsCallback" << endl;
-    //get joint names and values
-    if (msg->name.size() ==4){
-        // cout << "active joints update" << endl;
-            //get joint values 
-            for (int i = 0; i < msg->name.size(); i++)
-            {   
-                if (msg->name[i] == "joint1"){
-                    joint_values(2,0) = msg->position[i];
-                }else if (msg->name[i] == "joint2"){
-                    joint_values(3,0) = msg->position[i];
-                }else if (msg->name[i] == "joint3"){
-                    joint_values(4,0)  = msg->position[i];
-                }else if (msg->name[i] == "joint4"){
-                    joint_values(5,0)  = msg->position[i];
-                }
-            mobile_manipulator.setJoints(joint_values);
-            }
-        is_joints_read = true;
-    }
-}
+};
 
 /* @brief pose callback */
-void CNTRL::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
+void ARUCO::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {   
     // ROS_INFO("poseCallback");
     tf2::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
-    robot_pose.setRotation(q);
-    robot_pose.setOrigin(tf2::Vector3(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z));
-    is_pose_start = false;
+    robot_pose_tf.setRotation(q);
+    robot_pose_tf.setOrigin(tf2::Vector3(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z));
     tf2::Matrix3x3 rot_1;
     rot_1.setRotation(q); 
     // =  tf2::Matrix3x3(q.getRotation());
 
-    robot_pose_eigen << rot_1[0][0], rot_1[0][1], rot_1[0][2], msg->pose.pose.position.x,
+    robot_pose << rot_1[0][0], rot_1[0][1], rot_1[0][2], msg->pose.pose.position.x,
                         rot_1[1][0], rot_1[1][1], rot_1[1][2], msg->pose.pose.position.y,
                         rot_1[2][0], rot_1[2][1], rot_1[2][2], msg->pose.pose.position.z,
                         0, 0, 0, 1;
-    // robot_pose_eigen = Eigen::Isometry3d(Eigen::Translation3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z)
-    //                          * Eigen::Quaterniond(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w));
-    mobile_manipulator.setBasePose(robot_pose_eigen);
-    // cout<<"robot_pose: "<<endl<<robot_pose.getOrigin().x()<<" "<<robot_pose.getOrigin().y()<<" "<<robot_pose.getOrigin().z()<<endl;
-    double yaw, pitch, roll;
-    rot_1.getRPY(roll,pitch,yaw);
-    joint_values(1,0) = yaw;
+    is_pose_start = true;
+    
+}
+
+
+void ARUCO::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
+{   
+    // ROS_INFO("poseCallback");
+    tf2::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+    robot_pose_tf.setRotation(q);
+    robot_pose_tf.setOrigin(tf2::Vector3(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z));
+    tf2::Matrix3x3 rot_1;
+    rot_1.setRotation(q); 
+    // =  tf2::Matrix3x3(q.getRotation());
+
+    robot_pose << rot_1[0][0], rot_1[0][1], rot_1[0][2], msg->pose.pose.position.x,
+                        rot_1[1][0], rot_1[1][1], rot_1[1][2], msg->pose.pose.position.y,
+                        rot_1[2][0], rot_1[2][1], rot_1[2][2], msg->pose.pose.position.z,
+                        0, 0, 0, 1;
     is_pose_start = true;
 }
 
-/*controller callback*/
-void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
-{   
-    // ROS_INFO("control Callback");
-    double dist_error = 0;
-    if(is_joints_read && is_pose_start){
-        std_msgs::Float64MultiArray joint_velocity, ee_pose_err_msg;
-        geometry_msgs::Twist base_velocity;
-        // stop manipulator
-        // joint_velocity.data.resize(4);
-        // joint_velocity.data[0] = 0;
-        // joint_velocity.data[1] = 0;
-        // joint_velocity.data[2] = 0;
-        // joint_velocity.data[3] = 0;
-        // // publish joint velocity
-        // joints_vel_pub.publish(joint_velocity);
+// image callback
+void ARUCO::imageCallback(const sensor_msgs::ImageConstPtr& msg)
+{
+    // ROS_INFO("imageCallback");
+    cv_bridge::CvImagePtr cv_ptr;
+    cv::Mat image_mat;
+    Eigen::Vector4d p;
 
-        ee_target[0] = msg->pose.position.x;
-        ee_target[1] = msg->pose.position.y;
-        ee_target[2] =  msg->pose.position.z;
-        tf2::Quaternion q(msg->pose.orientation.x,  msg->pose.orientation.y, msg->pose.orientation.z, msg->pose.orientation.w);
-        tf2::Matrix3x3 m(q);
-        double roll, pitch, yaw;
-        m.getRPY(roll, pitch, yaw);
-        ee_target[5] =  yaw;
+    Eigen::Vector4d aruco_pose;
 
-
-        Eigen::Vector4d  err;
-        Matrix6d J, J_bar, J_DLS, P = Matrix6d::Identity(6,6);
-
-        // joint limit task
-        joint_limits.update(mobile_manipulator);
-        RowVector6d JJ, J_bar_;
-        Vector6d J_DLS_(6,1), J_bar_inv(6,1); 
-        double err_;
-        joint_limits.getJacobian(JJ);
-        J_bar_ = JJ*P;
-        mobile_manipulator.getDLS(J_bar_, _damping, J_DLS_);
-        if (joint_limits.isActive()){
-            joint_limits.getError(err_);
-            cout<<"err_: "<<err_<<endl;
-            dq += J_DLS_ *(_K*err_ - JJ*dq);
-            J_bar_inv = J_bar_.transpose() * (J_bar_* J_bar_.transpose()).inverse();
-            P -= J_bar_inv * J_bar_;
+    try
+    {
+        image_mat = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8)->image;
+        std::vector<int> ids;
+        std::vector<std::vector<cv::Point2f> > corners;
+        cv::aruco::detectMarkers(image_mat, dictionary, corners, ids);
+        if (ids.size() > 0)
+        {
+            cv::aruco::drawDetectedMarkers(image_mat, corners, ids);
+            std::vector<cv::Vec3d> rvecs, tvecs;
+            cv::aruco::estimatePoseSingleMarkers(corners, _marker_length_m,  _camera_matrix, _dist_coeffs, rvecs, tvecs);
+            for (int i = 0; i < ids.size(); i++)
+            {
+                // cv::aruco::drawAxis(image_mat, _camera_matrix, _dist_coeffs, rvecs[i], tvecs[i], _marker_length_m);
+                // cout<<"tvecs "<<ids[i]<<" "<<tvecs[i]<<endl;
+                if (ids[i]==_dictionary_id || ids[i]==_dictionary_id+10){
+                    p(0) = tvecs[0][0];
+                    p(1) = tvecs[0][1];
+                    p(2) = tvecs[0][2]+0.02;
+                    p(3) = 1;
+                    // cout<<"p "<<p<<endl;
+                    p = c2b * p;
+                    // cout<<"p "<<p<<endl;
+                    aruco_pose = robot_pose * p;
+                    // ROS_INFO("aruco_pose from aruco %f %f %f", aruco_pose[0], aruco_pose[1], aruco_pose[2]);
+                    //publish aruco_pose
+                    geometry_msgs::PoseStamped pose_msg;
+                    pose_msg.header.frame_id = _frame_id;
+                    pose_msg.header.stamp = ros::Time::now();
+                    pose_msg.pose.position.x = aruco_pose(0);
+                    pose_msg.pose.position.y = aruco_pose(1);
+                    pose_msg.pose.position.z = 0.3;//aruco_pose(2);
+                    
+                    goal_pub.publish(pose_msg);
+                }
+            }
+        
         }
-        // arm pose task
-        arm_pose.setDesired(ee_target); //set desired arm pose from sequencer 
-        arm_pose.update(mobile_manipulator); //update arm pose
-        arm_pose.getJacobian(J); //get Jacobian
-        // cout<<"J: "<<endl<<J<<endl;
-        J_bar = J*P;
-        mobile_manipulator.getDLS(J_bar, _damping, J_DLS);
-        arm_pose.getError(err); //get error
-        // cout<<"err: "<<endl<<err<<endl;
-        // cout<<"J_DLS: "<<J_DLS<<endl;
-        dq += J_DLS *(_K*err - J*dq);
-        P -= J_bar.completeOrthogonalDecomposition().pseudoInverse() * J_bar;
-        // cout<<"err: "<<err<<endl;
-        // velocity limit
-        double max = dq.maxCoeff();
-        double s = (dq.cwiseAbs()/dq.maxCoeff()).maxCoeff();
-        if (s>1) dq = dq/s;
-        cout<<"dq: "<<dq<<endl;
-        // publish joint velocity
-        joint_velocity.data.resize(4);
-        joint_velocity.data[0] = dq(2,0); //std::max(-2.5, std::min(dq(2,0), 2.5));//
-        joint_velocity.data[1] = dq(3,0); //std::max(-2.5, std::min(dq(3,0), 2.5));//
-        joint_velocity.data[2] = dq(4,0); //std::max(-2.5, std::min(dq(4,0), 2.5));//
-        joint_velocity.data[3] = dq(5,0); // std::max(-2.5, std::min(dq(5,0), 2.5));//
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
+    }
 
-        // publish base velocity
-        base_velocity.linear.x = dq(0,0); //std::max(-0.5, std::min(dq(0,0), 0.5));//
-        base_velocity.linear.y = 0;
-        base_velocity.linear.z = 0;
-        base_velocity.angular.x = 0;
-        base_velocity.angular.y = 0;
-        base_velocity.angular.z = dq(1,0);//std::max(-0.5, std::min(dq(1,0), 0.50));//
-        joints_vel_pub.publish(joint_velocity);
-        base_velocity_pub.publish(base_velocity);
-
-        mobile_manipulator.getPose(ee_pose);
-        cout<<"EE_pose: "<<endl<<ee_pose<<endl;
-        // publish error message to sequencer node
-        dist_error = hypot(hypot(ee_target[0]-ee_pose[0], ee_target[1]-ee_pose[1]), ee_target[2]-ee_pose[2]); 
-        ee_pose_err_msg.data.resize(1);
-        ee_pose_err_msg.data[0] = dist_error;
-        ee_pose_err_pub.publish(ee_pose_err_msg);
-
-
-    }    
 }
 
+void ARUCO::cameraInfoCallback(const sensor_msgs::CameraInfo::ConstPtr& msg)
+{
+    // if (haveCamInfo) {
+    //     return;
+    // }
+
+    if (msg->K != boost::array<double, 9>({0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0})) {
+        for (int i=0; i<3; i++) {
+            for (int j=0; j<3; j++) {
+                _camera_matrix.at<double>(i, j) = msg->K[i*3+j];
+            }
+        }
+
+        for (int i=0; i<5; i++) {
+            _dist_coeffs.at<double>(0,i) = msg->D[i];
+        }
+
+        // haveCamInfo = true;
+        // frameId = msg->header.frame_id;
+    }
+    else {
+        ROS_WARN("%s", "CameraInfo message has invalid intrinsics, K matrix all zeros");
+    }
+}
