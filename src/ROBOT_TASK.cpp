@@ -267,6 +267,7 @@ JointLimits::JointLimits(){
 //
 void JointLimits::update(MobileManipulator &robot, int j){
     // robot.getEEJacobian(this->J);
+    J.setZero(1,6);
     this->J[j] = 1; 
     robot.getJoints(q);
     double _alpha = 0.1, _delta = 0.2;

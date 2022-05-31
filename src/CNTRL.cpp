@@ -25,6 +25,8 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     // pose topic
     private_nh.param<string>("joint_vel_pub_topic", _joint_vel_pub_topic, "NONE");
     private_nh.param<string>("ee_pose_err_pub_sub_topic", _ee_pose_err_topic, "NONE");
+    private_nh.param<string>("ee_pose_pub_topic", _ee_pose_topic, "NONE");
+    private_nh.param<string>("joint_err_pub_sub_topic", _joint_err_topic, "NONE");
     private_nh.param<string>("odom_pub_topic", _odom_pub_topic, "NONE");
     private_nh.param<string>("base_vel_pub_topic", _base_vel_pub_topic, "NONE");
     private_nh.param<string>("vacuume_service_topic_on", _vacuume_service_topic_on, "NONE");
@@ -73,7 +75,9 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     // publishers
     joints_vel_pub = node.advertise<std_msgs::Float64MultiArray>(_joint_vel_pub_topic, 1);
     ee_pose_err_pub = node.advertise<std_msgs::Float64MultiArray>(_ee_pose_err_topic, 1);
-    goal_pub = node.advertise<geometry_msgs::PoseStamped>(_ee_target_pose_sub_topic, 1);
+    joint_err_pub = node.advertise<std_msgs::Float64MultiArray>(_joint_err_topic, 1);
+    ee_pose_pub = node.advertise<std_msgs::Float64MultiArray>(_ee_pose_topic, 1);
+    // goal_pub = node.advertise<geometry_msgs::PoseStamped>(_ee_target_pose_sub_topic, 1);
     base_velocity_pub = node.advertise<geometry_msgs::Twist>(_base_vel_pub_topic, 1);
     //initialising values
 
@@ -90,7 +94,7 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     mobile_manipulator.setLinkValues(_link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z);
     mobile_manipulator.setMobile(_is_mobile_base);
     desired_joint_pick << -1.5, 0, 0.0;
-    desired_joint_place << 1.35,-0.79 , 0;
+    desired_joint_place << 1.35,-0.724 , 0;
 }
 
 
@@ -141,7 +145,7 @@ void CNTRL::jointsCallback(const sensor_msgs::JointState::ConstPtr& msg)
     // cout<<"joint_values"<<joint_values<<endl;
 }
 
-/* @brief pose callback */
+/* @brief pose callback from slam  */
 void CNTRL::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {   
     // ROS_INFO("poseCallback");
@@ -164,6 +168,7 @@ void CNTRL::poseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPt
     joint_values(1,0) = yaw; //robot yaw angle
     is_pose_start = true;
 }
+
 
 void CNTRL::odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {   
@@ -200,7 +205,7 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
     double err_ =0; // for joint limit and position task
 
     if(is_joints_read && is_pose_start){
-        std_msgs::Float64MultiArray joint_velocity, ee_pose_err_msg;
+        std_msgs::Float64MultiArray joint_velocity, ee_pose_err_msg, joint_err_msg, ee_pose_msg;
         geometry_msgs::Twist base_velocity;
 
         ee_target[0] = msg->pose.position.x;
@@ -213,17 +218,17 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         m.getRPY(roll, pitch, yaw);
         ee_target[3] =  0;
 
-        if (ee_target(0) == -100&& ee_target(1) == -100 && ee_target(2) == 0.150){
+        if (ee_target(0) == -100&& ee_target(1) == -100 && ee_target(2) == 0.1450){
             // move near aruco
 
             mobile_manipulator.getPose(ee_pose);
-            ee_target << ee_pose(0), ee_pose(1), 0.150, 0;
+            ee_target << ee_pose(0), ee_pose(1), 0.1450, 0;
             pose_reached = true;
-        }else if (ee_target(0) == -100&& ee_target(1) == -100 && ee_target(2) == 0.145){
+        }else if (ee_target(0) == -100&& ee_target(1) == -100 && ee_target(2) == 0.14){
             //move Z down to aruco
             vacuumServiceOn();
             mobile_manipulator.getPose(ee_pose);
-            ee_target << ee_pose(0), ee_pose(1), 0.145, 0;
+            ee_target << ee_pose(0), ee_pose(1), 0.14, 0;
             pose_reached = true;
         }else if(ee_target(0) == -100 && ee_target(1) == -100 && ee_target(2) == -100){
             //pick up aruco
@@ -289,7 +294,7 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
                 joint_limits.getError(err_);
                 cout<<i+2<<" err_: "<<err_<<endl;
                 dq += J_DLS_ *(_K*err_ - JJ*dq);
-                J_bar_inv = J_bar_.transpose() * (J_bar_* J_bar_.transpose()).inverse();
+                J_bar_inv = J_bar_.transpose() * (J_bar_* J_bar_.transpose()).completeOrthogonalDecomposition().pseudoInverse();
                 P -= J_bar_inv * J_bar_;
             }
         }
@@ -305,9 +310,9 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 
                 // adjust weight matrix based on distance
                 double base_dist = hypot(ee_target(0) - robot_pose_eigen(0,3), ee_target(1) - robot_pose_eigen(1,3));
-                if (base_dist> 2*_base_dist_err_threshold) Winv.diagonal() << 1, 2, 1, 1, 1, 1;
-                else if (base_dist> _base_dist_err_threshold) Winv.diagonal() << 0.5, 2, 1, 1, 1, 1;
-                else {Winv.diagonal() << wv, ww, wx, wy, wz, 1; vacuumServiceOn();};
+                if (base_dist> 2*_base_dist_err_threshold) Winv.diagonal() << 0.23, 0.1, 1, 1, 1, 1;
+                else if (base_dist> _base_dist_err_threshold) Winv.diagonal() << 0.1, 0.1, 1, 1, 1, 1;
+                else {Winv.diagonal() << wv, ww, wx, wy, wz, 1; };
 
             // Winv = W.transpose() *(W*W.transpose()).inverse();
             mobile_manipulator.getDLS(J_bar, _damping, J_DLS, Winv);
@@ -327,7 +332,7 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         for (int i=0; i<dq.rows(); i++){
             if(std::isnan(dq(i))){
                 cout<<"dq is nan"<<endl;
-                dq(i) = 0;
+                dq(i) = 0.2;
             }
         }
         
@@ -363,6 +368,11 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         base_velocity_pub.publish(base_velocity);
 
         mobile_manipulator.getPose(ee_pose);
+        ee_pose_msg.data.resize(3);
+        ee_pose_msg.data[0] = ee_pose(0);
+        ee_pose_msg.data[1] = ee_pose(1);
+        ee_pose_msg.data[2] = ee_pose(2);
+        ee_pose_pub.publish(ee_pose_msg);
         cout<<"EE_pose: "<<endl<<ee_pose<<endl;
         // publish error message to sequencer node
         if(!aruco_picked){
@@ -384,30 +394,30 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
                 joints_position.setDesired(desired_joint_pick(i));
                 joints_position.update(mobile_manipulator, i+2);
                 joints_position.getError(err_);
-                ROS_INFO("joint  picking %d error: %f", i+2, err_);
                 dist_error(i) = abs(err_);    
             }
 
-            ee_pose_err_msg.data.resize(6);
-            ee_pose_err_msg.data[3] = dist_error(0);
-            ee_pose_err_msg.data[4] = dist_error(1);
-            ee_pose_err_msg.data[5] = dist_error(2);
-            ee_pose_err_pub.publish(ee_pose_err_msg);
+            joint_err_msg.data.resize(3);
+            joint_err_msg.data[0] = dist_error(0);
+            joint_err_msg.data[1] = dist_error(1);
+            joint_err_msg.data[2] = dist_error(2);
+            joint_err_pub.publish(joint_err_msg);
+            ROS_INFO("joint  picking error: %f, %f, %f", dist_error(0), dist_error(1), dist_error(2));
         }else if(aruco_placing){
 
             for (int i = 0; i < 3; i++){
                 joints_position.setDesired(desired_joint_place(i));
                 joints_position.update(mobile_manipulator, i+2);
                 joints_position.getError(err_);
-                ROS_INFO("joint %d placing error: %f", i+2, err_);
                 dist_error(i) = abs(err_);    
             }
 
-            ee_pose_err_msg.data.resize(6);
-            ee_pose_err_msg.data[3] = dist_error(0);
-            ee_pose_err_msg.data[4] = dist_error(1);
-            ee_pose_err_msg.data[5] = dist_error(2);
-            ee_pose_err_pub.publish(ee_pose_err_msg);
+            joint_err_msg.data.resize(3);
+            joint_err_msg.data[0] = dist_error(0);
+            joint_err_msg.data[1] = dist_error(1);
+            joint_err_msg.data[2] = dist_error(2);
+            joint_err_pub.publish(joint_err_msg);
+            ROS_INFO("joint  placing error: %f, %f, %f", dist_error(0), dist_error(1), dist_error(2));
         }
 
     }    
