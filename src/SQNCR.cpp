@@ -23,6 +23,7 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
     // pose topic
     private_nh.param<std::string>("joint_vel_pub_topic", _joint_vel_pub_topic, "NONE");
     private_nh.param<std::string>("joint_pose_pub_topic", _joint_pose_pub_topic, "NONE");
+    private_nh.param<std::string>("vacuum_state_topic", _vacuum_state_topic, "NONE");
     private_nh.param<std::string>("odom_pub_topic", _odom_pub_topic, "NONE");
     private_nh.param<string>("base_vel_pub_topic", _base_vel_pub_topic, "NONE");
     
@@ -54,6 +55,7 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
 
     // subscribers
     ee_err_sub = node.subscribe(__ee_pose_err_sub_topic, 1, &SQNCR::eeposeerrCallback, this);
+    vacuum_sub = node.subscribe(_vacuum_state_topic, 1, &SQNCR::vacuumCallback, this);
     joint_err_sub = node.subscribe(_joint_err_topic, 1, &SQNCR::jointerrCallback, this);
     aruco_pose_sub = node.subscribe(_aruco_pose_topic, 1, &SQNCR::arucoPoseCallback, this);
     
@@ -69,7 +71,8 @@ SQNCR::SQNCR(ros::NodeHandle node, ros::NodeHandle private_nh)
      is_aruco_pose = false;
 
 
-    _is_vacuum_gripper = false; _is_aruco_picked = false; _moving_z = false; _is_ee_error = false; _aruco_placing = false; _aruco_placed = false; _is_j_error = false;
+    _is_vacuum_gripper = false; _is_aruco_picked = false; _switched_joint = false; _moving_z = false; _is_ee_error = false; 
+    _aruco_placing = false; _aruco_placed = false; _is_j_error = false; _is_done = false; 
     ee_error.setZero(); joint_error.setZero();
 }
 
@@ -99,6 +102,16 @@ void SQNCR::eeposeerrCallback(const std_msgs::Float64MultiArray::ConstPtr& msg)
 
 }
 
+void SQNCR::vacuumCallback(const std_msgs::Bool::ConstPtr& msg)
+{   
+    // check data size
+
+    _is_vacuum_gripper = msg->data;
+   
+    ROS_INFO("vacuum state: %d",msg->data);
+
+
+}
 
 /*joint error callback*/
 void SQNCR::jointerrCallback(const std_msgs::Float64MultiArray::ConstPtr& msg)
@@ -126,16 +139,14 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
     double err = ee_error.norm();
 
 
-    if ((is_aruco_pose && !_is_ee_error) || (is_aruco_pose && err > _dist_err_threshold && err <= 1.5  && !_is_aruco_picked  && !_moving_z)){
+    if ((is_aruco_pose && !_is_ee_error) || (is_aruco_pose && err > _dist_err_threshold && err <= 1.5  && !_is_aruco_picked  && !_moving_z && !_switched_joint)){
         //move near aruco
-        ROS_INFO("err: %f", err);
-        ROS_INFO("_dist_err_threshold: %f", _dist_err_threshold);
         ROS_INFO("moving to aruco sequencer");
         pose_msg.header.stamp = ros::Time::now();
         double x,y; x = aruco_pose(0); y = aruco_pose(1);
         pose_msg.pose.position.x = aruco_pose(0);
         pose_msg.pose.position.y = aruco_pose(1);
-        pose_msg.pose.position.z = 0.150;
+        pose_msg.pose.position.z = 0.14;
 
         goal_pub_ctrl.publish(pose_msg);
         _is_aruco_picked = false;
@@ -143,34 +154,34 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
 
     }
     // if aruco is too far use motion planning
-    else if (_is_ee_error && err > 1.5 && !_is_aruco_picked && !_moving_z){
+    else if (_is_ee_error && err > 1.5 && !_is_aruco_picked && !_moving_z && !_switched_joint){
         //move near aruco
         ROS_INFO("moving to aruco using motion planning");
         pose_msg.header.stamp = ros::Time::now();
         double x,y; x = aruco_pose(0); y = aruco_pose(1);
-        pose_msg.pose.position.x = aruco_pose(0);
-        pose_msg.pose.position.y = aruco_pose(1);
-        pose_msg.pose.position.z = 0.1450;
+        pose_msg.pose.position.x = aruco_pose(0)-0.5;
+        pose_msg.pose.position.y = aruco_pose(1)-0.5;
+        pose_msg.pose.position.z = 0.14;
 
         goal_pub_pln.publish(pose_msg);
         _is_aruco_picked = false;
         // cout<<"republishing"<<endl;
 
     }
-    else if(_is_ee_error && ee_error(2) <=0.03  && err <= _dist_err_threshold && !_is_aruco_picked) {
+    else if(is_aruco_pose && _is_ee_error && err <= _dist_err_threshold && !_is_aruco_picked && !_switched_joint) {
         //move to aruco
         ROS_INFO("moving to aruco Z");
 
         pose_msg.header.stamp = ros::Time::now();
         pose_msg.pose.position.x = -100;
         pose_msg.pose.position.y = -100;
-        pose_msg.pose.position.z = 0.140;//+aruco_pose(2);
+        pose_msg.pose.position.z = 0.138;//+aruco_pose(2);
 
         goal_pub_ctrl.publish(pose_msg);
         _moving_z = true;
         _is_aruco_picked = true;
 
-    }else if(_is_ee_error && err <= _dist_err_threshold && _is_aruco_picked) {
+    }else if(is_aruco_pose && _is_ee_error && err <= _dist_err_threshold && _is_aruco_picked && !_switched_joint) {
         //to activate vacuum 
         ROS_INFO("picking aruco");
 
@@ -180,8 +191,9 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
         pose_msg.pose.position.z = -100;
 
         goal_pub_ctrl.publish(pose_msg);
+        _switched_joint = true;
 
-    }else if(_is_j_error && joint_error.norm() >= 0.18 && _is_aruco_picked && !_aruco_placing) {
+    }else if(is_aruco_pose && _is_j_error && joint_error.norm() >= 0.25 && _is_aruco_picked && !_aruco_placing && _switched_joint) {
         //moving to safe position
         ROS_INFO("picking aruco upward");
 
@@ -199,7 +211,7 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
         joints_pose_pub.publish(joint_position);
         // _aruco_placing = true;
 
-    }else if(_is_j_error && joint_error.norm() <= 0.18 && _is_aruco_picked  && !_aruco_placing) {
+    }else if(is_aruco_pose && _is_j_error && joint_error.norm() <= 0.25 && _is_aruco_picked  && !_aruco_placing && _switched_joint) {
         ROS_INFO("placing aruco on back 0");
         pose_msg.header.stamp = ros::Time::now();
         pose_msg.pose.position.x = -200;
@@ -208,17 +220,16 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
         goal_pub_ctrl.publish(pose_msg);
 
         joint_position.data.resize(4);
-        joint_position.data[0] = 1.35;
-        joint_position.data[1] = -0.724;
+        joint_position.data[0] = 1.445;
+        joint_position.data[1] = -0.556;
         joint_position.data[2] = 0;
         joint_position.data[3] = 0;
         joints_pose_pub.publish(joint_position);
 
-        // _aruco_placed = true;
         _is_aruco_picked = true;
         _aruco_placing = true;
         
-    }else if(_is_j_error && joint_error.norm() >= 0.18 && _aruco_placing) {
+    }else if(is_aruco_pose &&  _is_j_error && joint_error.norm() >= 0.25 && _aruco_placing && _switched_joint) {
         ROS_INFO("placing aruco on back 1");
         pose_msg.header.stamp = ros::Time::now();
         pose_msg.pose.position.x = -200;
@@ -227,14 +238,15 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
         goal_pub_ctrl.publish(pose_msg);
 
         joint_position.data.resize(4);
-        joint_position.data[0] = 1.35;
-        joint_position.data[1] = -0.724;
+        joint_position.data[0] = 1.445;
+        joint_position.data[1] = -0.556;
         joint_position.data[2] = 0;
         joint_position.data[3] = 0;
         joints_pose_pub.publish(joint_position);
+
         _is_aruco_picked = true;
         
-    }else if(_is_j_error && joint_error.norm() >= 0.18 && _aruco_placing) {
+    }else if(is_aruco_pose &&  _is_j_error && joint_error.norm() >= 0.25 && _aruco_placing && _switched_joint) {
         ROS_INFO("placing aruco on back 2");
         pose_msg.header.stamp = ros::Time::now();
         pose_msg.pose.position.x = -200;
@@ -243,23 +255,44 @@ void SQNCR::taskSequencer(const ros::TimerEvent& event)
         goal_pub_ctrl.publish(pose_msg);
 
         joint_position.data.resize(4);
-        joint_position.data[0] = 1.35;
-        joint_position.data[1] = -0.540;
+        joint_position.data[0] = 1.445;
+        joint_position.data[1] = -0.556;
         joint_position.data[2] = 0;
         joint_position.data[3] = 0;
         joints_pose_pub.publish(joint_position);
 
-        _aruco_placed = true;
         _is_aruco_picked = true;
         
-    }  else if(_is_j_error && joint_error.norm() <= 0.18 && _aruco_placed) {
+    }else if(is_aruco_pose && _is_j_error  && joint_error.norm() <= 0.25 && !_aruco_placed && _switched_joint) {
         ROS_INFO("turning off vacuum");
         pose_msg.header.stamp = ros::Time::now();
         pose_msg.pose.position.x = -300;
         pose_msg.pose.position.y = -300;
         pose_msg.pose.position.z = -300;//+aruco_pose(2);
         goal_pub_ctrl.publish(pose_msg);
+        if(!_is_vacuum_gripper){
+        _aruco_placed = true;
+        is_aruco_pose = false;}
+        ros::Duration(0.5).sleep();
+
+
+        
+    } else if(!_is_vacuum_gripper && _aruco_placed && !_is_done) {
+        ROS_INFO("stoping arm");
+        pose_msg.header.stamp = ros::Time::now();
+        pose_msg.pose.position.x = -400;
+        pose_msg.pose.position.y = -400;
+        pose_msg.pose.position.z = -400;//+aruco_pose(2);
+        goal_pub_ctrl.publish(pose_msg);
+        joint_position.data.resize(4);
+        joint_position.data[0] = 0;
+        joint_position.data[1] = 0;
+        joint_position.data[2] = 0;
+        joint_position.data[3] = 0;
+        joints_pose_pub.publish(joint_position);
+        _is_done = true;
         
     }    
+      
     
 }

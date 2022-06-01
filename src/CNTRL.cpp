@@ -30,6 +30,7 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     private_nh.param<string>("odom_pub_topic", _odom_pub_topic, "NONE");
     private_nh.param<string>("base_vel_pub_topic", _base_vel_pub_topic, "NONE");
     private_nh.param<string>("vacuume_service_topic_on", _vacuume_service_topic_on, "NONE");
+    private_nh.param<string>("vacuume_service_topic_off", _vacuume_service_topic_off, "NONE");
     
     // subscribers params
     private_nh.param<string>("pose_sub_topic", _pose_sub_topic, "NONE");
@@ -68,8 +69,8 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     else  pose_sub = node.subscribe(_odom_sub_topic, 1, &CNTRL::odomCallback, this);
     joints_sub = node.subscribe(_joint_state_sub_topic, 1, &CNTRL::jointsCallback, this);
     ee_sub = node.subscribe(_ee_target_pose_sub_topic, 1, &CNTRL::controlCallback, this);
-    // vacuum_service = node.serviceClient<std_srvs::Empty>(_vacuume_service_topic,  &CNTRL::vacuumServiceOn);
-    vacuum_service = node.serviceClient<std_srvs::Empty>(_vacuume_service_topic_on);
+    vacuum_service_off = node.serviceClient<std_srvs::Empty>(_vacuume_service_topic_off);
+    vacuum_service_on = node.serviceClient<std_srvs::Empty>(_vacuume_service_topic_on);
     
     
     // publishers
@@ -94,7 +95,7 @@ CNTRL::CNTRL(ros::NodeHandle node, ros::NodeHandle private_nh)
     mobile_manipulator.setLinkValues(_link_1, _link_2, _vacuum_offset_x, _vacuum_offset_z, _base_offset_x, _base_offset_z);
     mobile_manipulator.setMobile(_is_mobile_base);
     desired_joint_pick << -1.5, 0, 0.0;
-    desired_joint_place << 1.35,-0.724 , 0;
+    desired_joint_place << 1.445,-0.556 , 0;
 }
 
 
@@ -105,7 +106,7 @@ void CNTRL::vacuumServiceOn(){
     //empty service call
     
     ros::service::waitForService(_vacuume_service_topic_on, ros::Duration(0.3));
-    vacuum_service.call(req);
+    vacuum_service_on.call(req);
     _is_vacuum_gripper = true;
 }
 
@@ -116,7 +117,7 @@ void CNTRL::vacuumServiceOff(){
     //empty service call
     
     ros::service::waitForService(_vacuume_service_topic_off, ros::Duration(0.3));
-    vacuum_service.call(req);
+    vacuum_service_off.call(req);
     _is_vacuum_gripper = false;
 }
 /* @brief joints state listner */
@@ -218,17 +219,17 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         m.getRPY(roll, pitch, yaw);
         ee_target[3] =  0;
 
-        if (ee_target(0) == -100&& ee_target(1) == -100 && ee_target(2) == 0.1450){
+        if (ee_target(0) == -100&& ee_target(1) == -100 && ee_target(2) == 0.14){
             // move near aruco
 
             mobile_manipulator.getPose(ee_pose);
-            ee_target << ee_pose(0), ee_pose(1), 0.1450, 0;
+            ee_target << ee_pose(0), ee_pose(1), 0.14, 0;
             pose_reached = true;
-        }else if (ee_target(0) == -100&& ee_target(1) == -100 && ee_target(2) == 0.14){
+        }else if (ee_target(0) == -100&& ee_target(1) == -100 && ee_target(2) == 0.138){
             //move Z down to aruco
             vacuumServiceOn();
             mobile_manipulator.getPose(ee_pose);
-            ee_target << ee_pose(0), ee_pose(1), 0.14, 0;
+            ee_target << ee_pose(0), ee_pose(1), 0.138, 0;
             pose_reached = true;
         }else if(ee_target(0) == -100 && ee_target(1) == -100 && ee_target(2) == -100){
             //pick up aruco
@@ -274,9 +275,16 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
             }
 
         }else if(ee_target(0) == -300 && ee_target(1) == -300 && ee_target(2) == -300){
+            ROS_INFO("vacuum off");
             vacuumServiceOff();
             // aruco_picked = true;
             
+
+        }else  if(ee_target(0) == -400 && ee_target(1) == -400 && ee_target(2) == -400){
+            dq.setZero();
+            ee_target << ee_pose(0), ee_pose(1), ee_pose(2), 0;
+
+            aruco_picked = false;
 
         }
         W.setZero(6,6);
@@ -310,8 +318,8 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
 
                 // adjust weight matrix based on distance
                 double base_dist = hypot(ee_target(0) - robot_pose_eigen(0,3), ee_target(1) - robot_pose_eigen(1,3));
-                if (base_dist> 2*_base_dist_err_threshold) Winv.diagonal() << 0.23, 0.1, 1, 1, 1, 1;
-                else if (base_dist> _base_dist_err_threshold) Winv.diagonal() << 0.1, 0.1, 1, 1, 1, 1;
+                if (base_dist> 2*_base_dist_err_threshold) Winv.diagonal() << 0.09, 1.5, 1, 1, 1, 1;
+                else if (base_dist> _base_dist_err_threshold) Winv.diagonal() << 0.05, 1, 1, 1, 1, 1;
                 else {Winv.diagonal() << wv, ww, wx, wy, wz, 1; };
 
             // Winv = W.transpose() *(W*W.transpose()).inverse();
@@ -338,11 +346,17 @@ void CNTRL::controlCallback(const geometry_msgs::PoseStamped::ConstPtr& msg)
         
         cout<<"dq: "<<dq<<endl;
         // publish joint velocity
+        if(ee_target(0) == -400 && ee_target(1) == -400 && ee_target(2) == -400){
+            dq.setZero();
+            aruco_picked = false;
+
+        }
         joint_velocity.data.resize(4);
         joint_velocity.data[0] = dq(2,0); 
         joint_velocity.data[1] = dq(3,0); 
         joint_velocity.data[2] = dq(4,0); 
         joint_velocity.data[3] = dq(5,0); 
+        
         joints_vel_pub.publish(joint_velocity);
 
         // publish base velocity

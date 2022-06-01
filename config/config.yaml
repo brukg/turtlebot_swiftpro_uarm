@@ -1,6 +1,6 @@
 
 
-seq_freq: 10
+seq_freq: 5
 # frames
 frame_id: odom
 base_frame_id: base_link
@@ -14,7 +14,7 @@ joint_pose_pub_topic: /turtlebot2/manipulator/commands/position #manipulator joi
 base_vel_pub_topic: /turtlebot2/cmd_vel_mux/input/navi # base velocity
 vacuume_service_topic_on: /turtlebot2/vacuum_gripper/on
 vacuume_service_topic_off: /turtlebot2/vacuum_gripper/off
-
+vacuum_state_topic: /turtlebot2/vacuum_gripper/state
 # subscribers for arm only
 # joint_state_sub_topic: /swiftpro/joint_states #joints state subscriber standalone manipulator
 # joint_vel_pub_topic: /swiftpro/manipulator/commands/velocity #joint velocity publisher manipulator standalone

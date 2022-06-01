@@ -136,9 +136,9 @@ void ARUCO::imageCallback(const sensor_msgs::ImageConstPtr& msg)
                 // cv::aruco::drawAxis(image_mat, _camera_matrix, _dist_coeffs, rvecs[i], tvecs[i], _marker_length_m);
                 // cout<<"tvecs "<<ids[i]<<" "<<tvecs[i]<<endl;
                 if (ids[i]==_dictionary_id || ids[i]==_dictionary_id+10){
-                    p(0) = tvecs[0][0];
+                    p(0) = tvecs[0][0]-0.04;
                     p(1) = tvecs[0][1];
-                    p(2) = tvecs[0][2]+0.02;
+                    p(2) = tvecs[0][2]+0.03;
                     p(3) = 1;
                     // cout<<"p "<<p<<endl;
                     p = c2b * p;

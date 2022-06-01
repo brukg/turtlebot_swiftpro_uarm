@@ -4,7 +4,7 @@
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "robot_control");
+    ros::init(argc, argv, "aruco_detector");
     ros::NodeHandle node;
     ros::NodeHandle private_nh("~");
 

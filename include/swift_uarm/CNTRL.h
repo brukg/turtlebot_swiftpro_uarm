@@ -39,7 +39,7 @@ class CNTRL
         ros::Subscriber pose_sub, joints_sub, ee_sub; //subscriber robot pose, joint state, end effector pose(target)
         ros::Publisher goal_pub, ee_pose_err_pub, joint_err_pub, ee_pose_pub; //publishes poses
         ros::Publisher joints_vel_pub, base_velocity_pub;  //publishes velocities
-        ros::ServiceClient vacuum_service;
+        ros::ServiceClient vacuum_service_on, vacuum_service_off; //vacuum service
 
         Eigen::Matrix4f prev_transformation; //cumulative transformation until the previous time instance
         bool is_initial, is_pose_start, is_joints_read; //boolean to tell if this is 1st iteration of the algo and start of imu and pose reading

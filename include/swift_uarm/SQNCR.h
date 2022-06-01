@@ -10,6 +10,7 @@
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/Float64MultiArray.h>
+#include <std_msgs/Bool.h>
 
 #include <eigen3/Eigen/Dense>
 #include <tf2_ros/static_transform_broadcaster.h>
@@ -33,10 +34,13 @@ class SQNCR
 
         void eeposeerrCallback(const std_msgs::Float64MultiArray::ConstPtr& msg); 
         void jointerrCallback(const std_msgs::Float64MultiArray::ConstPtr& msg);
+        void vacuumCallback(const std_msgs::Bool::ConstPtr& msg);
+
+
         void taskSequencer(const ros::TimerEvent& event); //task sequencer
         
         ros::Timer sequencer; //task sequencer
-        ros::Subscriber robot_pose_sub, aruco_pose_sub, joints_sub, ee_err_sub, joint_err_sub; //subscriber robot pose, joint state, end effector pose(target)
+        ros::Subscriber robot_pose_sub, aruco_pose_sub, joints_sub, ee_err_sub, vacuum_sub, joint_err_sub; //subscriber robot pose, joint state, end effector pose(target)
         ros::Publisher goal_pub_ctrl, goal_pub_pln; //publishes geometry_msgs::PoseWithCovariance msgs
         ros::Publisher joints_pose_pub,  base_velocity_pub;  //publishes sensor_msgs::PointCloud2
         bool is_initial, is_robot_pose, is_aruco_pose, is_joints_read; //boolean to tell if this is 1st iteration of the algo and start of imu and pose reading
@@ -46,7 +50,7 @@ class SQNCR
         /*---------sub parameters----------*/
         std::string _point_cloud_sub_topic; //point cloud ros topic to subscribe to
         std::string _pose_sub_topic, _odom_sub_topic; //pose ros topic to which to subscribe
-        std::string _joint_state_sub_topic, _joint_vel_pub_topic, _joint_pose_pub_topic, _base_vel_pub_topic;//joints ros topic to which to subscribe
+        std::string _joint_state_sub_topic, _joint_vel_pub_topic, _joint_pose_pub_topic, _vacuum_state_topic, _base_vel_pub_topic;//joints ros topic to which to subscribe
         std::string _aruco_pose_topic, _ee_target_pose_sub_topic, _ee_pln_topic, __ee_pose_err_sub_topic, _joint_err_topic; //ee target pose topic to which to subscribe
 
         /*---------pub parameters----------*/
@@ -66,8 +70,8 @@ class SQNCR
         bool _is_ee_pose_target_control; //if ee target pose control
         bool _is_joint_control; //if joint control
         bool _is_joint_vel_target_control; //if joint vel target control
-        bool _is_ee_error, _is_j_error, _moving_z;
-        bool _is_aruco_picked, _aruco_placing, _aruco_placed;
+        bool _is_ee_error, _is_j_error, _moving_z, _is_done;
+        bool _is_aruco_picked, _aruco_placing, _aruco_placed, _switched_joint;
 
         
 
